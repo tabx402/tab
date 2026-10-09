@@ -1,0 +1,30 @@
+.flock-panel { overflow: hidden; }
+.flock-panel .panel-heading { align-items: flex-start; margin-bottom: 8px; }
+.flock-sub { margin: 6px 0 0; color: var(--muted); font-size: 12px; max-width: 560px; }
+.flock-stage { position: relative; height: 360px; margin: 0 calc(var(--panel-padding) * -1); background: radial-gradient(ellipse at 30% 85%, #3978a614, transparent 60%), radial-gradient(ellipse at 82% 30%, #b9dfc60a, transparent 50%); }
+.flock-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: pan-y; }
+.flock-tip { position: absolute; z-index: 2; width: 190px; display: grid; gap: 3px; padding: 10px 12px; border: 1px solid #50697d66; border-radius: 7px; background: #0b1826ee; backdrop-filter: blur(6px); pointer-events: none; font-size: 11px; color: var(--muted); }
+.flock-tip strong { color: var(--text); font-size: 12px; font-weight: 500; }
+.flock-empty { position: absolute; left: 0; right: 0; top: 42%; text-align: center; color: var(--muted); font-size: 12px; margin: 0; }
+.flock-ticker { padding-left: 4px; display: flex; align-items: center; gap: 16px; min-height: 30px; padding-top: 14px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); overflow: hidden; }
+.flock-mode { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; text-transform: lowercase; }
+.flock-mode i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+.flock-mode.live i { background: var(--mint); box-shadow: 0 0 0 0 #b9dfc680; animation: flock-pulse 2s ease-out infinite; }
+.flock-mode.replay i { background: var(--action-blue, #abd5f1); animation: flock-pulse 1s ease-out infinite; }
+@keyframes flock-pulse { from { box-shadow: 0 0 0 0 #b9dfc680; } to { box-shadow: 0 0 0 9px #b9dfc600; } }
+.flock-event { display: flex; align-items: center; gap: 10px; min-width: 0; animation: flock-in .45s var(--motion-ease, ease) both; }
+.flock-event time { font-family: "IBM Plex Mono", monospace; }
+.flock-event strong { color: var(--text); font-weight: 500; white-space: nowrap; }
+.flock-event .log-kind { white-space: nowrap; }
+.flock-event em { font-style: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+@keyframes flock-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (max-width: 720px) {
+  .flock-stage { height: 280px; }
+  .flock-event em, .flock-event time { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flock-mode i, .flock-event { animation: none; }
+}
+.flock-tip[hidden] { display: none; }
+.flock-count { margin-left: auto; padding-top: 6px; color: var(--muted); font-size: 11px; font-family: "IBM Plex Mono", monospace; white-space: nowrap; }
+@media (max-width: 720px) { .flock-count { display: none; } }

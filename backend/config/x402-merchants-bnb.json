@@ -1,0 +1,12 @@
+[
+  {
+    "id": "dexscreener-usdt-market-data",
+    "resource_url": "https://x402-gateway.bankofai.io/providers/dexscreener-dex-data-bsc/latest/dex/tokens/0x55d398326f99059fF775485246999027B3197955",
+    "facilitator_url": "https://facilitator.bankofai.io",
+    "recipient": "0x7bac3352Bc5F342DcaFA573749aA4502CB12dA86",
+    "network": "eip155:56",
+    "asset": "0x55d398326f99059fF775485246999027B3197955",
+    "fee_payer": "0x672eD10501BA36dc157138BC96c7b30e9B706aa9",
+    "max_amount": "1000000000000"
+  }
+]

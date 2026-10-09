@@ -1,0 +1,25 @@
+{
+  "chain_id": 56,
+  "usdt_address": "0x55d398326f99059ff775485246999027b3197955",
+  "usdt_decimals": 18,
+  "modules": {
+    "lending": { "address": null, "code_hash": null },
+    "stock_loans": {
+      "address": null,
+      "code_hash": null,
+      "usdt_feed": null,
+      "usdt_feed_code_hash": null,
+      "usdt_max_age": null,
+      "usdt_feed_decimals": null,
+      "assets": []
+    },
+    "buyback": {
+      "address": null,
+      "code_hash": null,
+      "router": null,
+      "router_code_hash": null,
+      "official_token_code_hash": null,
+      "route": []
+    }
+  }
+}

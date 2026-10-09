@@ -1,0 +1,12 @@
+import { createRoot } from "react-dom/client";
+import "@fontsource/dm-sans/400.css";
+import "@fontsource/dm-sans/500.css";
+import "@fontsource/ibm-plex-mono/400.css";
+import { request, type RuntimeAgent } from "../src/lib/api";
+import { AgentWalletActions } from "../src/components/AgentWalletActions";
+import "../src/styles.css";
+import "../src/components/action-colors.css";
+const agent={id:"agent-a",name:"QA agent",purpose:"local fixture",wallet:"0x1111111111111111111111111111111111111111",registry_id:"0x"+"1".repeat(64),status:"ready",daily_cap:"5",max_call:"1",tools:["x402","bnb-rpc"],cadence:"manual"} as RuntimeAgent;
+const owned=[agent];
+const send=async()=>{document.body.dataset.sends=String(Number(document.body.dataset.sends||"0")+1);if(document.body.dataset.mode==="rejected")throw Object.assign(new Error("Wallet request rejected by user."),{cause:{code:4001}});if(document.body.dataset.mode==="unknown")throw Error("RPC response lost after wallet interaction.");return "0x"+"a".repeat(64);};
+createRoot(document.getElementById("root")!).render(<main><section className="panel"><p>local wallet QA · no funds</p><AgentWalletActions agent={agent} owned={owned} api={request} live send={send} changed={async()=>{}}/></section></main>);

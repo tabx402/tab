@@ -1,0 +1,52 @@
+{
+  "status": "deployed",
+  "chain_id": 56,
+  "network": "BNB Smart Chain",
+  "usdt_address": "0x55d398326f99059ff775485246999027b3197955",
+  "usdt_decimals": 18,
+  "usdt_code_hash": "0x97a48aa4c129657440dafdacd4c836389734d28cc4a0ca7403e68da660a74a59",
+  "authority": "0x00e128e7779ea927a087b40ade268dedc1b34a90",
+  "official_tab_address": null,
+  "source_hash": "0x84e0499c98c29b65eaa4856221132e3ff46a0f6524e6a73667ac102addc39c3f",
+  "contracts": {
+    "protocol": {
+      "address": "0x567e7187d477b1a68c3ac3d292ad44a0d5e770c7",
+      "code_hash": "0xb2d365466cb7db891382003d25c65908733c3eb6f3434da02934017d4587ecfd",
+      "transaction_hash": "0x8ea68f7fff11a3b41b6a02a297e05a0167779e385bb8ad435c9d2e5461767f76",
+      "block_number": 126122873,
+      "source_verification": {
+        "provider": "sourcify",
+        "creation_match": "exact_match",
+        "runtime_match": "exact_match",
+        "url": "https://repo.sourcify.dev/56/0x567e7187d477b1a68c3ac3d292ad44a0d5e770c7"
+      }
+    },
+    "backing": {
+      "address": "0x31033e00e7e9d8c050560c69a0cb31b4135a79b4",
+      "code_hash": "0x43042305a3ad3c014356ff96be7106b9c29ba3dcd666bf5110a32c79bbd8ac9c",
+      "transaction_hash": "0x8f4c744a972012608e77b97b04ee7b7832f645f83dfb1429714becc1cf0b7ad8",
+      "block_number": 126122958,
+      "source_verification": {
+        "provider": "sourcify",
+        "creation_match": "exact_match",
+        "runtime_match": "exact_match",
+        "url": "https://repo.sourcify.dev/56/0x31033e00e7e9d8c050560c69a0cb31b4135a79b4"
+      }
+    },
+    "economics": {
+      "address": "0xd3963f0f2bf05ae36ae8eadc682b88f9660db7c3",
+      "code_hash": "0xe0693aabea99445ae7eec840b0b9e43ca76bc37d803c096053296883eeb3f00e",
+      "transaction_hash": "0x070ae4355d8bb33112ad1811c09b717195001af43b2a3440c31432527903da6e",
+      "block_number": 126122962,
+      "source_verification": {
+        "provider": "sourcify",
+        "creation_match": "exact_match",
+        "runtime_match": "exact_match",
+        "url": "https://repo.sourcify.dev/56/0xd3963f0f2bf05ae36ae8eadc682b88f9660db7c3"
+      }
+    }
+  },
+  "deployed_at": "2026-10-06T20:20:13.081Z",
+  "gas_cost_bnb": "0.0004597923",
+  "deployment_block": 126122873
+}

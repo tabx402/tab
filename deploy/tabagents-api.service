@@ -1,0 +1,22 @@
+[Unit]
+Description=Tab BNB Rust development API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/apps/tabagents
+EnvironmentFile=/home/ubuntu/apps/tabagents/backend/.env
+ExecStart=/home/ubuntu/apps/tabagents/backend/target/release/tab-api
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/apps/tabagents/backend/data
+
+[Install]
+WantedBy=multi-user.target

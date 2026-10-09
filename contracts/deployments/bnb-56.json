@@ -1,0 +1,44 @@
+{
+  "status": "deployed",
+  "chain_id": 56,
+  "network": "BNB Smart Chain",
+  "usdt_address": "0x55d398326f99059ff775485246999027b3197955",
+  "usdt_decimals": 18,
+  "usdt_code_hash": "0x97a48aa4c129657440dafdacd4c836389734d28cc4a0ca7403e68da660a74a59",
+  "authority": "0x00e128e7779ea927a087b40ade268dedc1b34a90",
+  "official_tab_address": null,
+  "fee_bps": 50,
+  "credit_mode": "collateralized",
+  "holder_exemption_scope": "executor wallet balance at settlement",
+  "previous_protocol": "0x567e7187d477b1a68c3ac3d292ad44a0d5e770c7",
+  "migrated_agents": [
+    "0x00e128e7779ea927a087b40ade268dedc1b34a900c6a4b0bb186f1cb77aa9aee",
+    "0x00e128e7779ea927a087b40ade268dedc1b34a90424648c0b9e033324821614c",
+    "0xcaaf7c62ca25081e483bf60eea68f779f218fdc21ba442408dc4aeb2da1c426b"
+  ],
+  "migration_transaction": "0x014117f9d92db10a6fb7880632175b38a46d215fba9fd61f7933462966fc3edb",
+  "source_hash": "0xf1cc35e6f52f7356baa37f8e70ef1002ff32874ceae62a79ef590d3ea2835bd0",
+  "deployment_block": 126544905,
+  "contracts": {
+    "protocol": {
+      "address": "0xbe2c140c0b40d25ef5531d93c0696318319e6375",
+      "code_hash": "0x808e42b1b0d20ec8a87c2b5f7061c0f50370582f98f69baa43ebc276273186c1",
+      "transaction_hash": "0x05604a768a2f7cd3b80c2881ed3855dedf0b32b384f7c732ae0e089a265bfef7",
+      "block_number": 126544905
+    },
+    "backing": {
+      "address": "0xfe0d8f539899d095140ec4d56aab46c6293698ff",
+      "code_hash": "0x295860397ceb470d9c3c68a6e1163fbc8e8072e2b341d028157173a867acd9c9",
+      "transaction_hash": "0x7b7e371131e2acb28b1d2a9208c86a87063af21edf3177bd2498ea98ff7b6ae0",
+      "block_number": 126544909
+    },
+    "economics": {
+      "address": "0x541fbdbe2f7b9dd7d0bfa1fa527f7f7732ef9839",
+      "code_hash": "0xf5d6c29b774d9b7a5f19ec16cd7ce376462a0bd6abf2d06ea3b8e532f83a6da7",
+      "transaction_hash": "0x885f2a28036133e9d697f7f132e15cb823b90d219a8b6cbea73105a466faa279",
+      "block_number": 126544913
+    }
+  },
+  "deployed_at": "2026-10-09T01:06:21.263Z",
+  "gas_cost_bnb": "0.0005647686"
+}

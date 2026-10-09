@@ -1,0 +1,50 @@
+import { chromium } from '../node_modules/playwright/index.mjs';
+import assert from 'node:assert/strict';
+import { mkdirSync } from 'node:fs';
+const origin = process.env.TAB_TEST_ORIGIN || 'http://127.0.0.1:5197';
+mkdirSync('../qa', { recursive: true });
+const browser = await chromium.launch({ headless: true });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+const errors = [];
+page.on('pageerror', (error) => errors.push(error.message));
+let release;
+const gate = new Promise((resolve) => { release = resolve; });
+await page.route('**/api/overview?*', async (route) => { await gate; await route.continue(); });
+await page.goto(origin, { waitUntil: 'domcontentloaded' });
+await page.locator('.hero-art.is-visible').waitFor({ state: 'attached' });
+const delays = await page.evaluate(() => ['.hero-art', '.hero h1'].map((s) => parseFloat(getComputedStyle(document.querySelector(s)).transitionDelay)));
+assert(delays[0] > delays[1], 'art must enter separately after title');
+assert.equal(await page.locator('.loading-bar').count(), 1, 'art must appear while data is still loading');
+await page.waitForTimeout(900);
+const before = await page.locator('.hero-art .draw').last().evaluate((el) => parseFloat(getComputedStyle(el).strokeDashoffset));
+assert(before > 0 && before < 1, `drawing should be in progress: ${before}`);
+release();
+await page.unrouteAll({ behavior: 'wait' });
+await page.waitForTimeout(2100);
+const metricDelays = await page.locator('.metric').evaluateAll((nodes) => nodes.map((el) => getComputedStyle(el).transitionDelay));
+assert.equal(new Set(metricDelays).size, 4, 'metrics should enter one by one');
+const after = await page.locator('.hero-art .draw').last().evaluate((el) => parseFloat(getComputedStyle(el).strokeDashoffset));
+assert(after < before, 'drawing must advance');
+assert.equal(await page.locator('.bird-render').count(), 0);
+assert.equal(await page.locator('.hero.reveal-item, .dashboard-grid.reveal-item, .metrics.reveal-item').count(), 0);
+await page.screenshot({ path: '../qa/drawn-birds-desktop.png' });
+await page.getByRole('link', { name: 'agents', exact: true }).click();
+await page.locator('.page-intro h1.is-visible').waitFor({ state: 'attached' });
+await page.waitForTimeout(1500);
+await page.locator('.agents-panel').scrollIntoViewIfNeeded();
+await page.waitForTimeout(1400);
+await page.screenshot({ path: '../qa/drawn-birds-agents.png' });
+for (const width of [1440, 390]) {
+ const reduced = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: 'reduce' });
+ for (const route of ['/', '/agents', '/agents/wren', '/backing', '/providers', '/activity', '/protocol', '/account']) {
+  await reduced.goto(origin + route, { waitUntil: 'networkidle' });
+  const status = await reduced.evaluate(() => ({ width: document.body.scrollWidth, viewport: innerWidth, hidden: [...document.querySelectorAll('.reveal-item')].filter((el) => getComputedStyle(el).opacity !== '1').length }));
+  assert.equal(status.width, status.viewport, `overflow ${width} ${route}`);
+  assert.equal(status.hidden, 0, `hidden reduced-motion content ${route}`);
+  if (width === 390 && route === '/') await reduced.screenshot({ path: '../qa/drawn-birds-mobile.png' });
+ }
+ await reduced.close();
+}
+assert.deepEqual(errors, []);
+await browser.close();
+console.log('Independent art timing, SVG drawing, route reveals, and desktop/mobile reduced-motion checks passed.');

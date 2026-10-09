@@ -1,0 +1,48 @@
+{
+  "name": "tabagents",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "sync:api": "node scripts/sync-api.mjs",
+    "test:e2e": "node tests/preview.mjs",
+    "test:jobs": "node tests/jobs.mjs",
+    "test:access-key": "node tests/access-key.mjs",
+    "test:bnb": "node tests/bnb.mjs",
+    "record:bnb": "node tests/record-bnb-media.mjs",
+    "test:wallet": "node tests/evm-wallet.mjs",
+    "test:activity": "node tests/activity.mjs",
+    "test:payments": "node tests/payments.mjs",
+    "test:wallet-actions": "node tests/wallet-actions.mjs",
+    "test:registration": "node tests/registration.mjs",
+    "test:feature-flow": "node tests/feature-flow.mjs",
+    "test:starter-live": "node tests/starter-live.mjs",
+    "test:finance": "node tests/finance.mjs"
+  },
+  "dependencies": {
+    "@fontsource/dm-sans": "^5.2.0",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
+    "@privy-io/react-auth": "^3.40.0",
+    "@solana-program/memo": "^0.12.0",
+    "@solana-program/system": "^0.13.0",
+    "@solana-program/token": "^0.15.0",
+    "@solana/kit": "^7.1.1",
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.9.6",
+    "viem": "^2.38.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.1",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.2.4"
+  }
+}

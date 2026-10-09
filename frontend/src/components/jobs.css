@@ -1,0 +1,63 @@
+.job-bud { width: 22px; height: 28px; color: var(--blue); flex: 0 0 auto; }
+.job-bud.accepted { color: var(--mint); }
+.garden-jobs { margin-top: 18px; border-top: 1px solid var(--line); font-size: 12px; }
+.garden-jobs > summary { padding: 16px 0 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; cursor: pointer; }
+.garden-jobs > summary > span:first-child { display: flex; align-items: center; gap: 9px; }
+.garden-jobs-body { padding: 15px 0 0; }
+.garden-job { border-top: 1px solid var(--line); }
+.garden-job > summary { display: flex; gap: 12px; align-items: center; padding: 14px 0; cursor: pointer; }
+.garden-job > summary > span:nth-child(2), .owned-job > span:nth-child(2) { display: grid; gap: 4px; flex: 1; min-width: 0; }
+.garden-job strong, .owned-job strong { font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.garden-job small, .owned-job small { color: var(--muted); font-size: 10px; }
+.job-status { color: var(--mint); font: 9px "IBM Plex Mono", monospace; overflow-wrap: anywhere; max-width: 130px; }
+.job-status[data-funding="unfunded"] { color: var(--muted); }
+.job-public-detail { padding: 0 0 20px 34px; }
+.job-pairs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 24px; padding: 14px 0; }
+.job-pairs > span { color: var(--muted); font-size: 11px; display: grid; gap: 5px; }
+.job-pairs strong { color: var(--text); font-size: 12px; font-weight: 500; overflow-wrap: anywhere; }
+.job-branch-row { display: flex; align-items: center; gap: 10px; color: var(--mint); padding: 10px 0; border-top: 1px solid var(--line); font-size: 11px; }
+.job-branch-row > span { color: var(--muted); margin-left: auto; font-size: 10px; }
+.job-public-links { display: flex; gap: 24px; flex-wrap: wrap; margin-top: 14px; }
+.job-proof { margin-top: 18px; font-size: 10px; color: var(--muted); }
+.job-proof summary { cursor: pointer; }
+.job-proof p { margin-top: 12px; }
+.job-proof code, .job-evidence code, .job-wallet-review code { display: block; overflow-wrap: anywhere; font-size: 10px; color: var(--blue); margin-top: 5px; }
+.agent-public-jobs { margin: 22px 0; }
+.agent-jobs { border-top: 1px solid var(--line); margin: 26px 0; padding-top: 24px; }
+.agent-jobs > .panel-heading { gap: 16px; align-items: flex-start; }
+.agent-jobs h3 { font-size: 18px; font-weight: 500; }
+.agent-jobs h4 { font-size: 14px; font-weight: 500; }
+.job-availability { color: var(--muted); font-size: 11px; line-height: 1.8; margin: 16px 0; padding-left: 12px; border-left: 1px solid var(--line); }
+.job-form { max-width: 650px; margin: 24px 0; padding: 22px; border: 1px solid var(--line); border-radius: 10px; background: #09152166; }
+.job-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.job-form fieldset { border: 0; padding: 12px 0; }
+.job-form legend { color: var(--muted); font-size: 11px; }
+.job-form .primary { margin-top: 12px; }
+.owned-job-list { margin: 18px 0; }
+.owned-job { width: 100%; display: flex; text-align: left; align-items: center; gap: 12px; padding: 14px 10px; border-top: 1px solid var(--line); border-radius: 0; }
+.owned-job.selected { background: #a9d5ed08; }
+.owned-job-detail { border: 1px solid var(--line); border-radius: 10px; padding: 22px; margin-top: 20px; }
+.job-description { font-size: 13px; color: var(--muted); line-height: 1.8; overflow-wrap: anywhere; }
+.job-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+.job-evidence, .job-wallet-review { border-left: 1px solid var(--mint); margin: 20px 0; padding: 12px 18px; background: #b8ddc904; font-size: 12px; line-height: 1.8; }
+.job-evidence pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
+.job-wallet-review button, .job-wallet-review > a { margin: 12px 12px 0 0; }
+.job-wallet-review summary { cursor: pointer; font-size: 10px; margin-top: 12px; }
+.garden-legend .job { border: 1px solid var(--blue); border-radius: 55% 55% 40% 40%; height: 11px; }
+.garden-legend .accepted { border: 1px solid var(--mint); background: #b9dfc622; border-radius: 50%; }
+.garden-legend .root { width: 16px; height: 7px; border-bottom: 1px solid var(--mint); border-radius: 50%; }
+@media (max-width: 600px) {
+  .agent-jobs > .panel-heading { flex-wrap: wrap; }
+  .job-form, .owned-job-detail { padding: 15px; }
+  .job-form-grid { grid-template-columns: 1fr; gap: 0; }
+  .job-public-detail { padding-left: 0; }
+  .job-pairs { gap: 14px; }
+  .job-branch-row { flex-wrap: wrap; }
+  .job-branch-row > span { margin-left: 24px; }
+  .job-status { max-width: 90px; }
+  .garden-jobs > summary { font-size: 11px; }
+}
+
+.job-evidence-input { margin: 18px 0; }
+.job-evidence-input label { display: grid; gap: 8px; }
+.job-evidence-input textarea { min-height: 100px; }
