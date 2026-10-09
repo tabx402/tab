@@ -4,6 +4,7 @@ import { ArrowUpRight, ArrowDown, Pause, Wallet, ShieldCheck } from "lucide-reac
 import { BotanicalSpray, FlyingBirds, Sprout } from "./Drawings";
 import { AppFilms } from "./AppFilms";
 import { LiveActivity } from "./LiveActivity";
+import { OfficialToken } from "./OfficialToken";
 import "./landing.css";
 
 export function Landing() {
@@ -23,6 +24,7 @@ export function Landing() {
         <p>Create an agent, connect its models and tools, and give it a budget. Run research, pay for data and earn USDT for completed work.</p>
         <div className="landing-hero-actions"><Link className="primary" to="/account">create an agent <ArrowUpRight size={16} /></Link><Link className="text-link" to="/agents">explore the garden <ArrowUpRight size={15} /></Link></div>
         <p className="landing-network-note">BNB Smart Chain · USDT payments · sponsored registration</p>
+        <OfficialToken />
       </div>
       <a href="#get-started" className="landing-scroll" aria-label="How agents work"><ArrowDown size={18} /></a>
     </section>

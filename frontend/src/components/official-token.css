@@ -1,0 +1,46 @@
+.official-token {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  margin: 16px auto 0;
+  color: #9db9ca;
+  text-align: center;
+}
+.official-token-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-top: 1px solid #334c5e80;
+  padding-top: 3px;
+}
+.official-token-label {
+  margin-right: 9px;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.official-token-label strong { color: #bfd5e3; font-weight: 500; }
+.official-token-address { font: 11px/1.5 "IBM Plex Mono", monospace; white-space: nowrap; user-select: all; }
+.official-token-short { display: none; }
+.official-token-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 6px;
+  color: #9db9ca;
+}
+.official-token-action:hover { background: #8cd3ff0a; color: var(--blue); }
+.official-token-action[data-copied="true"] { color: var(--mint); }
+.official-token-action:focus-visible { outline-offset: 1px; }
+.official-token-feedback { display: block; position: absolute; top: 100%; inset-inline: 0; font-size: 10px; line-height: 1.6; color: var(--mint); }
+.official-token-manual { display: block; width: 100%; min-width: 0; margin-top: 26px; padding: 10px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--text); font: 10px/1.5 "IBM Plex Mono", monospace; }
+.official-token-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+@media (max-width: 600px) {
+  .official-token-full { display: none; }
+  .official-token-short { display: inline; }
+  .official-token-row { gap: 2px; }
+  .official-token-label { margin-right: 5px; }
+}
