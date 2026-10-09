@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowUpRight, ArrowDown, Pause, Wallet, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, ArrowDown } from "lucide-react";
 import { BotanicalSpray, FlyingBirds, Sprout } from "./Drawings";
 import { LiveActivity } from "./LiveActivity";
 import { OfficialToken } from "./OfficialToken";
+import { RunWalkthrough } from "./RunWalkthrough";
 import "./landing.css";
 
 export function Landing() {
@@ -30,11 +31,7 @@ export function Landing() {
 
     <section className="landing-controls landing-section" id="get-started">
       <div className="landing-section-heading"><h2>keep the work<br /><span>within your limits.</span></h2><p>A saved setup gives the agent its task and tools. Registration gives it a BNB mainnet record. Spending permissions come from your wallet.</p></div>
-      <div className="landing-control-grid">
-        <article><Wallet size={22} /><h3>choose the task</h3><p>Connect models, research and onchain tools to your agent. Run it when needed or set a schedule.</p></article>
-        <article><ShieldCheck size={22} /><h3>set the budget</h3><p>Set a daily USDT cap and a maximum per call. Paid requests need your approval or a limited permission you grant.</p></article>
-        <article><Pause size={22} /><h3>inspect each run</h3><p>Read the tools used, cost, result and payment receipt together. Partial work stays visible. Pause future runs whenever you need.</p></article>
-      </div>
+      <RunWalkthrough />
     </section>
 
     <section className="landing-network landing-section">

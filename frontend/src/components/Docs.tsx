@@ -1,22 +1,13 @@
 import { Link, useLocation } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
-import { ArrowUpRight, ArrowRight } from "lucide-react";
+import { ArrowUpRight, ArrowRight, ChevronDown } from "lucide-react";
 
-const sections = [
-  ["get-started", "getting started"],
-  ["tools", "tools and schedules"],
-  ["payments", "USDT payments"],
-  ["jobs", "jobs and branches"],
-  ["finance", "lending and stock loans"],
-  ["tokens", "$TAB and agent tokens"],
-  ["bonds", "bonds and outcomes"],
-  ["fees", "fees and buybacks"],
-  ["builder", "builder API"],
-  ["credit", "credit and backing"],
-] as const;
+import { docGroups } from "../lib/navigation";
+import { SearchButton } from "./Navigation";
 
 export function Docs() {
   const { hash } = useLocation();
+  const [indexOpen, setIndexOpen] = useState(false);
   useEffect(() => {
     if (!hash) return;
     const frame = requestAnimationFrame(() => { const node=document.getElementById(hash.slice(1)); const disclosure=node?.closest("details"); if(disclosure) disclosure.open=true; node?.scrollIntoView({ block: "start" }); });
@@ -65,7 +56,9 @@ export function Docs() {
       <section className="page-intro"><div><h1>docs.</h1><p>Create an agent, connect its tools, and understand its payments.</p></div></section>
       <div className="docs-layout">
         <nav className="docs-index" aria-label="Documentation sections">
-          {sections.map(([id, label]) => <a key={id} href={`#${id}`} onClick={() => {const disclosure=document.getElementById(id)?.closest("details"); if(disclosure) disclosure.open=true;}} aria-current={active === id ? "location" : undefined}>{label}</a>)}
+          <SearchButton docs />
+          <button className="docs-index-toggle" aria-expanded={indexOpen} aria-controls="docs-nav-groups" onClick={() => setIndexOpen(!indexOpen)}>on this page<ChevronDown size={15} /></button>
+          <div className="docs-nav-groups" id="docs-nav-groups" data-open={indexOpen}>{docGroups.map(group => <div className="docs-nav-group" key={group.label}><span>{group.label}</span>{group.items.map(({id, label}) => <a key={id} href={`#${id}`} onClick={() => { setIndexOpen(false); const disclosure=document.getElementById(id)?.closest("details"); if(disclosure) disclosure.open=true; }} aria-current={active === id ? "location" : undefined}>{label}</a>)}</div>)}</div>
         </nav>
         <div className="docs-content" ref={content} data-reading-section={active}>
           <section id="get-started"><h2>create your first agent.</h2><ol><li>Open your account and connect an EVM wallet or sign in with your email. Verify a wallet with a positive TAB balance to start new app actions.</li><li>Choose a template, give the agent a name, and describe its job.</li><li>Select its tools, language model, schedule, and USDT spending limits.</li><li>Review the setup and sign a registration permission. When sponsorship is available, Tab submits the registration and pays its BNB gas fee.</li><li>Open the agent and select “run now” to see its first result.</li></ol><p>Registration records the agent's policy on BNB Smart Chain. New agents and the “bring your own” template use the same sponsored registration. If sponsorship is unavailable, your setup stays saved. Paying the registration fee from your own wallet is optional and requires selecting that option. Job funding and paid tools have separate USDT budgets.</p><Link className="primary" to="/account">open your account <ArrowUpRight size={15} /></Link></section>

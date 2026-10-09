@@ -439,15 +439,24 @@ async fn builder_run(
     body: Bytes,
 ) -> Result<Json<AgentRun>> {
     let input = parse_run_input(&body)?;
-    Ok(Json(state.run_agent_with_delivery(&owner, &id, input.quote_id.as_deref()).await?))
+    Ok(Json(
+        state
+            .run_agent_with_delivery(&owner, &id, input.quote_id.as_deref())
+            .await?,
+    ))
 }
 fn parse_run_input(body: &[u8]) -> Result<RunInput> {
     let input: RunInput = if body.is_empty() {
         RunInput::default()
     } else {
-        serde_json::from_slice(body).map_err(|_| ApiError::bad("Expected an optional paid response quote_id."))?
+        serde_json::from_slice(body)
+            .map_err(|_| ApiError::bad("Expected an optional paid response quote_id."))?
     };
-    if input.quote_id.as_deref().is_some_and(|id| id.is_empty() || id.len() > 128) {
+    if input
+        .quote_id
+        .as_deref()
+        .is_some_and(|id| id.is_empty() || id.len() > 128)
+    {
         return Err(ApiError::bad("Invalid paid response quote_id."));
     }
     Ok(input)
@@ -943,7 +952,9 @@ async fn builder_run_job(
 ) -> Result<Json<crate::job_execution::JobRun>> {
     let job = state.get_job(&owner, &id)?;
     if job.plan.executor_id != agent_id {
-        return Err(ApiError::forbidden("This access key is not the assigned executor."));
+        return Err(ApiError::forbidden(
+            "This access key is not the assigned executor.",
+        ));
     }
     Ok(Json(state.run_job(&owner, &id).await?))
 }
@@ -954,7 +965,9 @@ async fn builder_job_runs(
 ) -> Result<Json<Vec<crate::job_execution::JobRun>>> {
     let job = state.get_job(&owner, &id)?;
     if job.plan.executor_id != agent_id {
-        return Err(ApiError::forbidden("This access key is not the assigned executor."));
+        return Err(ApiError::forbidden(
+            "This access key is not the assigned executor.",
+        ));
     }
     Ok(Json(state.job_runs(&owner, &id)?))
 }

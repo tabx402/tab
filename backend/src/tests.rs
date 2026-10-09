@@ -584,3 +584,50 @@ async fn configured_keys_with_zero_provider_budget_are_not_advertised_as_availab
         }
     }
 }
+
+#[test]
+fn event_run_migration_preserves_legacy_rows_without_guessing() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("legacy.sqlite");
+    let db = rusqlite::Connection::open(&path).unwrap();
+    db.execute_batch("CREATE TABLE network_identity(chain TEXT PRIMARY KEY); INSERT INTO network_identity VALUES('eip155:56:usdt18'); CREATE TABLE agent_events(id INTEGER PRIMARY KEY AUTOINCREMENT,agent_id TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,at TEXT NOT NULL,message TEXT NOT NULL,provider TEXT,amount TEXT,currency TEXT,tx_hash TEXT); INSERT INTO agent_events(agent_id,kind,status,at,message) VALUES('agent','run_completed','completed','same-time','legacy');").unwrap();
+    drop(db);
+    for _ in 0..2 {
+        let store = crate::db::Store::open(&path).unwrap();
+        let row: (String, Option<String>) = store.connect().unwrap().query_row("SELECT message,run_id FROM agent_events WHERE id=1", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!(row, ("legacy".into(), None));
+    }
+}
+
+#[test]
+fn event_previews_and_receipts_use_exact_run_ids_and_preserve_privacy() {
+    let (_dir, state) = state();
+    let mut public = state.create_agent("a", agent_input(true)).unwrap();
+    public.registry_id = Some("public-registry-id".into());
+    state.store.save_agent(&public).unwrap();
+    let private = state.create_agent("b", agent_input(false)).unwrap();
+    let unlisted = state.create_agent("c", agent_input(true)).unwrap();
+    let db = state.store.connect().unwrap();
+    db.execute("INSERT INTO agent_public_exclusions VALUES(?,?)", params![unlisted.id,"same-time"]).unwrap();
+    for (id, agent, summary) in [("one", &public, "first result"), ("two", &public, "second result"), ("private", &private, "private result"), ("unlisted", &unlisted, "unlisted result")] {
+        db.execute("INSERT INTO agent_runs VALUES(?,?,?,?,?,?)",params![id,agent.id,"completed","same-time","same-time",json!({"openrouter":{"summary":summary,"prompt":"hidden prompt"}}).to_string()]).unwrap();
+        state.event_for_run(agent,"run_completed","finished","completed",None,None,None,None,Some(id)).unwrap();
+    }
+    for run in [None, Some("missing"), Some("private")] {
+        state.event_for_run(&public,"model_result","uncorrelated","completed",None,None,None,None,run).unwrap();
+    }
+    let events = state.events(None,None,0,100).unwrap();
+    assert!(events.iter().all(|e| e.agent_id == public.id));
+    for event in &events {
+        match event.run_id.as_deref() {
+            Some("one") => assert_eq!(event.preview.as_ref().unwrap()["summary"], "first result"),
+            Some("two") => assert_eq!(event.preview.as_ref().unwrap()["summary"], "second result"),
+            _ => assert!(event.preview.is_none()),
+        }
+    }
+    let receipt = state.public_run_receipt(&public.id,"one").unwrap();
+    assert_eq!(receipt["events"].as_array().unwrap().len(),1);
+    assert_eq!(receipt["events"][0]["run_id"],"one");
+    assert!(!receipt.to_string().contains("hidden prompt"));
+    assert_eq!(state.events(Some("b"),None,0,100).unwrap().len(),1);
+}

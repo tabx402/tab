@@ -5,6 +5,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {TabProtocol} from "../src/TabProtocol.sol";
 import {TabTypes as T} from "../src/TabTypes.sol";
 import {TabLendingPool} from "../src/TabLendingPool.sol";
+import {TabPriceOracle} from "../src/TabPriceOracle.sol";
 import {TabStockLending} from "../src/TabStockLending.sol";
 import {TabBuyback} from "../src/TabBuyback.sol";
 import {FinanceToken, FinanceFeed, FinanceMarket} from "./TabFinanceTestBase.sol";
@@ -53,7 +54,11 @@ contract TabFinanceForkTest is Test {
     }
 
     function testDeployedProtocolWorkingCapitalInteropOnBnbFork() public {
-        TabLendingPool pool = new TabLendingPool(address(protocol));
+        FinanceFeed bnbFeed = new FinanceFeed(8, 1000e8);
+        FinanceFeed usdtFeed = new FinanceFeed(8, 1e8);
+        TabPriceOracle oracle = new TabPriceOracle(0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c, USDT, address(bnbFeed), address(usdtFeed), 1 hours, 1 hours);
+        TabLendingPool pool = new TabLendingPool(address(protocol), address(oracle));
+        vm.deal(BORROWER, 1 ether);
         vm.startPrank(LENDER);
         usdt.approve(address(pool), 100 ether);
         pool.deposit(100 ether, LENDER);
@@ -87,10 +92,12 @@ contract TabFinanceForkTest is Test {
         );
         vm.startPrank(BORROWER);
         pool.acceptLoan(LOAN);
+        pool.pledgeCollateral{value: 0.01 ether}(LOAN);
         pool.spendLoan(LOAN, MERCHANT, 1 ether, 1, H, H);
         usdt.approve(address(pool), 1 ether);
         pool.repayLoan(LOAN, 1 ether);
         pool.closeLoan(LOAN);
+        pool.withdrawCollateral(LOAN, 0.01 ether);
         vm.stopPrank();
         vm.prank(LENDER);
         pool.redeem(100 ether, LENDER, LENDER);

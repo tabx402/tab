@@ -137,7 +137,9 @@ contract TabLendingPool is TabUSDTLiquidity {
         uint256 value = Math.mulDiv(collateral[id], price, 1 ether);
         if (l.debt <= Math.mulDiv(value, LIQUIDATION_BPS, 10_000)
             && block.timestamp <= uint256(l.expiresAt) + LIQUIDATION_GRACE) revert Collateral();
-        uint256 coveredDebt = Math.mulDiv(value, 10_000, 10_000 + LIQUIDATION_BONUS_BPS);
+        // A worthless rounding remainder can still be cleared for one USDT base unit.
+        // Liquidators choose whether to pay this minimum; debt is never forgiven here.
+        uint256 coveredDebt = Math.max(1, Math.mulDiv(value, 10_000, 10_000 + LIQUIDATION_BONUS_BPS));
         repaid = Math.min(maximum, coveredDebt);
         if (repaid == 0) revert Collateral();
         if (maximum >= coveredDebt) seized = collateral[id];

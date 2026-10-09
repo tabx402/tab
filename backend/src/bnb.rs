@@ -22,6 +22,9 @@ use std::{
 use tokio::sync::Mutex;
 pub const CHAIN_ID: u64 = 56;
 pub const USDT: &str = "0x55d398326f99059ff775485246999027b3197955";
+pub const WBNB: &str = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
+pub const WBNB_CODE_HASH: &str =
+    "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6";
 pub const ZERO: &str = "0x0000000000000000000000000000000000000000";
 pub const ZERO_HASH: &str = "0x0000000000000000000000000000000000000000000000000000000000000000";
 pub fn address(value: &str) -> Result<String> {
@@ -550,6 +553,36 @@ impl Bnb {
             return Err(ApiError::unavailable(
                 "Backing token network or precision changed.",
             ));
+        }
+        if address(token)? == WBNB {
+            let code = self.rpc("eth_getCode", json!([WBNB, "latest"])).await?;
+            let bytes = hex::decode(code.as_str().unwrap_or("").trim_start_matches("0x"))
+                .map_err(|_| ApiError::unavailable("Invalid WBNB runtime."))?;
+            if bytes.is_empty()
+                || hash(&bytes) != WBNB_CODE_HASH
+                || asset["code_hash"] != WBNB_CODE_HASH
+            {
+                return Err(ApiError::unavailable(
+                    "Canonical WBNB custody runtime changed.",
+                ));
+            }
+            for slot in [
+                "0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc",
+                "0xa3f0ad74e5423aebfd80d3ef4346578335a9a72aeaee59ff6cb3582b35133d50",
+            ] {
+                let value = self
+                    .rpc("eth_getStorageAt", json!([WBNB, slot, "latest"]))
+                    .await?;
+                if value
+                    .as_str()
+                    .is_none_or(|value| value != format!("0x{}", "0".repeat(64)))
+                {
+                    return Err(ApiError::unavailable(
+                        "Canonical WBNB proxy identity changed.",
+                    ));
+                }
+            }
+            return Ok(());
         }
         for (address_key, hash_key) in [
             ("address", "code_hash"),

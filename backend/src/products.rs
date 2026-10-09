@@ -487,6 +487,7 @@ impl AppState {
         }
         assets.insert(0,json!({"symbol":"USDT","name":"Tether USD","address":self.config.usdt,"decimals":18,"token_standard":"BEP20","category":"usdt","enabled":true,"status":"configured","network":"mainnet","chain_id":56}));
         assets.insert(1,json!({"symbol":"BNB","name":"BNB","address":null,"decimals":18,"token_standard":"native","category":"native","enabled":true,"status":"configured","network":"mainnet","chain_id":56}));
+        assets.insert(2,json!({"symbol":"WBNB","name":"Wrapped BNB","address":bnb::WBNB,"decimals":18,"token_standard":"BEP20","category":"wrapped_native","enabled":true,"status":"configured","network":"mainnet","chain_id":56,"code_hash":bnb::WBNB_CODE_HASH,"custody_enabled":true,"source":"https://bscscan.com/token/0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c"}));
         json!(assets)
     }
 }

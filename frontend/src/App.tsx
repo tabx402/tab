@@ -1,3 +1,4 @@
+import { Header } from "./components/Navigation";
 import { ProtocolGuide } from "./components/ProtocolGuide";
 import {
   useEffect,
@@ -10,14 +11,13 @@ import {
 import type { ReactNode } from "react";
 import {
   BrowserRouter,
-  NavLink,
   Link,
   Routes,
   Route,
   useParams,
   useLocation,
 } from "react-router-dom";
-import { ArrowUpRight, ArrowRight, UserRound } from "lucide-react";
+import { ArrowUpRight, ArrowRight } from "lucide-react";
 import { request } from "./lib/api";
 import { ChainContext, BNB_CHAIN_ID, USDT_ADDRESS } from "./lib/evm";
 import type { Config, Provider } from "./lib/api";
@@ -49,44 +49,6 @@ function useData() {
 }
 export function useConfig() {
   return useData().config;
-}
-function Header() {
-  return (
-    <header>
-      <div className="nav-shell">
-        <Link className="brand" to="/">
-          <Sprout />
-          tab
-        </Link>
-        <nav aria-label="Main navigation">
-          {[
-            ["/", "home"],
-            ["/agents", "garden"],
-            ["/jobs", "jobs"],
-            ["/backing", "backing"],
-            ["/finance", "finance"],
-            ["/providers", "tools"],
-            ["/activity", "log"],
-            ["/docs", "docs"],
-          ].map(([url, name]) => (
-            <NavLink end={url === "/"} key={url} to={url}>
-              {name}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="header-actions">
-          <a className="header-x-link" href="https://x.com/tabx402" target="_blank" rel="noopener noreferrer" aria-label="Tab on X (opens in a new tab)">
-            <img src="/images/x-logo.svg" width={17} height={17} alt="" aria-hidden="true" />
-          </a>
-        <Link className="account-link" to="/account">
-          <UserRound size={15} />
-          <span>my account</span>
-          <ArrowUpRight size={14} />
-        </Link>
-        </div>
-      </div>
-    </header>
-  );
 }
 function PageIntro({
   title,

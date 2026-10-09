@@ -7,6 +7,7 @@ import type { components } from "../lib/api-schema";
 import "./garden.css";
 import { GardenJobs } from "./Jobs";
 import { jobAPI } from "../lib/jobs";
+import { GardenInspector, type GardenSelection } from "./GardenInspector";
 
 type PublicAgent = components["schemas"]["PublicAgent"];
 type AgentRecord = components["schemas"]["AgentRecord"];
@@ -233,6 +234,8 @@ export function Garden({ highlight, focus }: { highlight: string | null; focus: 
   const navigate = useNavigate();
   const props = useRef({ highlight, focus });
   const [summary, setSummary] = useState("");
+  const [selected, setSelected] = useState<GardenSelection | null>(null);
+  const [choices, setChoices] = useState<{ key: string; name: string }[]>([]);
   const [emptyGarden, setEmptyGarden] = useState(false);
   const [publicJobs, setPublicJobs] = useState<PublicJob[]>([]), [jobsError, setJobsError] = useState("");
   const api = useRef<{ focus: (id: string | null) => void; redraw: () => void } | null>(null);
@@ -262,6 +265,8 @@ export function Garden({ highlight, focus }: { highlight: string | null; focus: 
     const horizon = () => H * 0.3, front = () => H * 0.86;
     const rowY = (k: number) => horizon() + (front() - horizon()) * depth(k) ** 1.25;
     const baseScale = () => (W < 640 ? 0.78 : Math.min(1.5, H / 420));
+
+    const selectionFor = (plant: Plant): GardenSelection => ({ key: plant.key, name: plant.name, meta: plant.meta, href: plant.href, runs: plant.rec.runs, paid: records.get(plant.key)?.paid ?? null, lastEvent: records.get(plant.key)?.last_event_id ?? 0 });
 
     const build = () => {
       const t = now();
@@ -347,6 +352,8 @@ export function Garden({ highlight, focus }: { highlight: string | null; focus: 
         });
       }
       plants = next;
+      setChoices(next.filter(plant => plant.key !== "registry").map(({ key, name }) => ({ key, name })));
+      if (focused) { const plant = next.find(item => item.key === focused); setSelected(plant ? selectionFor(plant) : null); if (!plant) focused = null; }
       // distant growth for depth: tufts and far shrubs, decoration only
       const dr = rng(42); decor = [];
       for (let i = 0; i < Math.round(W / 22); i++) { const row = Math.floor(dr() * 5) + (dr() < 0.35 ? 0 : 1); decor.push({ x: dr() * W, y: rowY(row) + (dr() - 0.5) * 18 * depth(row), s: bs * depth(row), kind: dr() < 0.8 ? 0 : 1, seed: Math.floor(dr() * 1e9) }); }
@@ -367,6 +374,7 @@ export function Garden({ highlight, focus }: { highlight: string | null; focus: 
 
     const resize = () => {
       const r = box.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
+      if (r.width <= 0 || r.height <= 0) return;
       W = r.width; H = r.height; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       cam.x = cam.tx = W / 2; cam.y = cam.ty = H / 2;
       if (live.length || registry) build();
@@ -499,6 +507,7 @@ export function Garden({ highlight, focus }: { highlight: string | null; focus: 
       ctx.restore();
     };
     const draw = () => {
+      if (!alive || W <= 0 || H <= 0) return;
       const t = reduced ? 1e12 : now();
       spriteBudget = 16;
       if (!reduced) { cam.x += (cam.tx - cam.x) * 0.06; cam.y += (cam.ty - cam.y) * 0.06; cam.z += (cam.tz - cam.z) * 0.06; }
@@ -645,6 +654,8 @@ export function Garden({ highlight, focus }: { highlight: string | null; focus: 
     const focusOn = (key: string | null) => {
       const p = key ? plants.find((x) => x.key === key) : null;
       focused = p?.key ?? null;
+      setSelected(p ? selectionFor(p) : null);
+      showTip(null);
       if (!p) { cam.tx = W / 2; cam.ty = H / 2; cam.tz = 1; }
       else { cam.tz = clamp((H * 0.5) / (p.height * p.scale), 1.5, 8); cam.tx = p.base.x; cam.ty = p.base.y - (p.height * p.scale) / 2; }
       if (reduced) draw();
@@ -678,12 +689,14 @@ export function Garden({ highlight, focus }: { highlight: string | null; focus: 
         </div>
         <span className="garden-count">{summary || "—"}</span>
       </div>
+      <div className="garden-selection-control"><label>look closer<select aria-label="Select an agent in the garden" value={selected?.key ?? ""} onChange={event => api.current?.focus(event.target.value || null)}><option value="">choose an agent</option><option value="registry">tab registry</option>{choices.map(choice => <option value={choice.key} key={choice.key}>{choice.name}</option>)}</select></label><span>select a plant to read its record</span></div>
       <div className="garden-stage" ref={wrap}>
         <canvas ref={canvas} role="img" aria-label="A garden of plants, one per agent, grown from each agent's runs, tools, payments, failures, job agreements and delegation roots" />
         <div className="garden-tip" ref={tip} hidden />
+        {selected && <GardenInspector selection={selected} close={() => api.current?.focus(null)} />}
       </div>
       {emptyGarden&&<p className="field-help garden-empty" role="status">No public agents have been shared yet. Agent plants appear when a real registration is published.</p>}
-      <div className="garden-legend" aria-hidden="true">
+      <details className="garden-guide"><summary>read the garden</summary><div className="garden-legend">
         <span><i className="leaf" />leaf or seed · completed run</span>
         <span><i className="bloom" />blossom · tool</span>
         <span><i className="berry" />berry · settled payment</span>
@@ -694,6 +707,7 @@ export function Garden({ highlight, focus }: { highlight: string | null; focus: 
         <span><i className="root" />root · delegation (dashed when unfunded)</span>
         <span className="garden-hint">click a plant to look closer · esc to step back</span>
       </div>
+      </details>
       <GardenJobs jobs={publicJobs} error={jobsError} />
     </section>
   );

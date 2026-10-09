@@ -291,7 +291,23 @@ impl AppState {
         currency: Option<&str>,
         tx_hash: Option<&str>,
     ) -> Result<()> {
-        self.store.connect()?.execute("INSERT INTO agent_events(agent_id,kind,status,at,message,provider,amount,currency,tx_hash) VALUES(?,?,?,?,?,?,?,?,?)",params![agent.id,kind,status,now(),message,provider,amount,currency,tx_hash])?;
+        self.event_for_run(
+            agent, kind, message, status, provider, amount, currency, tx_hash, None,
+        )
+    }
+    pub(crate) fn event_for_run(
+        &self,
+        agent: &RuntimeAgent,
+        kind: &str,
+        message: &str,
+        status: &str,
+        provider: Option<&str>,
+        amount: Option<&str>,
+        currency: Option<&str>,
+        tx_hash: Option<&str>,
+        run_id: Option<&str>,
+    ) -> Result<()> {
+        self.store.connect()?.execute("INSERT INTO agent_events(agent_id,kind,status,at,message,provider,amount,currency,tx_hash,run_id) VALUES(?,?,?,?,?,?,?,?,?,?)",params![agent.id,kind,status,now(),message,provider,amount,currency,tx_hash,run_id])?;
         Ok(())
     }
     pub fn events(
@@ -302,11 +318,12 @@ impl AppState {
         limit: u64,
     ) -> Result<Vec<AgentEvent>> {
         let db = self.store.connect()?;
-        let sql="SELECT e.id,e.agent_id,json_extract(a.payload,'$.name'),e.kind,e.status,e.at,e.message,e.provider,e.amount,e.currency,e.tx_hash FROM agent_events e JOIN runtime_agents a ON a.id=e.agent_id WHERE e.id>?1 AND (?2 IS NULL OR a.id=?2) AND ((?3 IS NOT NULL AND a.owner=?3) OR (?3 IS NULL AND json_extract(a.payload,'$.public_activity')=1 AND NOT EXISTS(SELECT 1 FROM unlisted_public_agents x WHERE x.agent_id=a.id))) ORDER BY e.id DESC LIMIT ?4";
+        let sql="SELECT e.id,e.agent_id,json_extract(a.payload,'$.name'),e.kind,e.status,e.at,e.message,e.provider,e.amount,e.currency,e.tx_hash,e.run_id FROM agent_events e JOIN runtime_agents a ON a.id=e.agent_id WHERE e.id>?1 AND (?2 IS NULL OR a.id=?2) AND ((?3 IS NOT NULL AND a.owner=?3) OR (?3 IS NULL AND json_extract(a.payload,'$.public_activity')=1 AND NOT EXISTS(SELECT 1 FROM unlisted_public_agents x WHERE x.agent_id=a.id))) ORDER BY e.id DESC LIMIT ?4";
         let mut stmt = db.prepare(sql)?;
         let rows = stmt.query_map(params![after, id, owner, limit.min(500)], |r| {
             Ok(AgentEvent {
                 id: r.get(0)?,
+                run_id: r.get(11)?,
                 agent_id: r.get(1)?,
                 agent: r.get(2)?,
                 kind: r.get(3)?,
@@ -333,7 +350,16 @@ impl AppState {
             {
                 continue;
             }
-            let output:Option<String>=db.query_row("SELECT output FROM agent_runs WHERE agent_id=? AND started_at<=? ORDER BY started_at DESC LIMIT 1",params![event.agent_id,event.timestamp],|r|r.get(0)).optional()?;
+            let Some(run_id) = event.run_id.as_deref() else {
+                continue;
+            };
+            let output: Option<String> = db
+                .query_row(
+                    "SELECT output FROM agent_runs WHERE agent_id=? AND id=?",
+                    params![event.agent_id, run_id],
+                    |r| r.get(0),
+                )
+                .optional()?;
             if let Some(output) = output.and_then(|s| serde_json::from_str::<Value>(&s).ok()) {
                 event.preview = safe_preview(&output);
             }
@@ -520,7 +546,7 @@ impl AppState {
             }
             tx.commit()?;
         }
-        self.event(
+        self.event_for_run(
             &agent,
             "run_started",
             "agent run started",
@@ -529,6 +555,7 @@ impl AppState {
             None,
             None,
             None,
+            Some(&run_id),
         )?;
         let result = self
             .execute_tools(&agent, &run_id, paid_delivery, true)
@@ -570,7 +597,17 @@ impl AppState {
             tx.commit()?;
         }
         let (kind, message) = run_completion(status);
-        self.event(&agent, kind, message, status, None, None, None, None)?;
+        self.event_for_run(
+            &agent,
+            kind,
+            message,
+            status,
+            None,
+            None,
+            None,
+            None,
+            Some(&run_id),
+        )?;
         Ok(AgentRun {
             id: run_id,
             agent_id: id.into(),
@@ -597,8 +634,16 @@ impl AppState {
                      tx_hash: Option<&str>|
          -> Result<()> {
             if emit_events {
-                self.event(
-                    agent, kind, message, status, provider, amount, currency, tx_hash,
+                self.event_for_run(
+                    agent,
+                    kind,
+                    message,
+                    status,
+                    provider,
+                    amount,
+                    currency,
+                    tx_hash,
+                    Some(run_id),
                 )
             } else {
                 Ok(())

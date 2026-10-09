@@ -184,6 +184,8 @@ pub(crate) async fn fixture() -> Fixture {
     let hash = bnb::hash(&hex::decode("60006000").unwrap());
     let manifest = root.join("manifest.json");
     std::fs::write(&manifest,serde_json::to_vec(&json!({"chain_id":56,"authority":WALLET,"official_tab_address":null,"usdt_address":bnb::USDT,"usdt_decimals":18,"usdt_code_hash":hash,"deployment_block":1,"contracts":{"protocol":{"address":PROTOCOL,"code_hash":hash},"backing":{"address":BACKING,"code_hash":hash},"economics":{"address":ECONOMICS,"code_hash":hash}}})).unwrap()).unwrap();
+    // Fixture finance readiness is isolated from the mutable mainnet manifest.
+    std::fs::write(root.join("finance-bnb.json"), serde_json::to_vec(&json!({"chain_id":56,"usdt_address":bnb::USDT,"usdt_decimals":18,"modules":{"lending":{"address":null},"stock_loans":{"address":null},"buyback":{"address":null}}})).unwrap()).unwrap();
     let config = Config {
         sponsor_enabled: false,
         sponsor_key: None,

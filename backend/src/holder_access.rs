@@ -1152,6 +1152,9 @@ mod tests {
             "pool_redeem",
             "stock_redeem",
             "advance_repay",
+            "advance_pledge",
+            "advance_withdraw_collateral",
+            "advance_liquidate",
             "stock_repay",
             "stock_withdraw",
         ] {

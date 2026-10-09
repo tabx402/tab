@@ -37,7 +37,7 @@ export function RouteReveal({ children, ready }: { children: ReactNode; ready: b
         const target = entry.target as HTMLElement;
         const index = groups.get(target.parentElement) ?? 0;
         groups.set(target.parentElement, index + 1);
-        if (!target.dataset.entryDelay) target.style.setProperty("--reveal-delay", `${Math.min(index, 3) * 90}ms`);
+        if (!target.dataset.entryDelay) target.style.setProperty("--reveal-delay", `${Math.min(index, 3) * 55}ms`);
         target.classList.add("is-visible");
         observer.unobserve(target);
       });
@@ -51,14 +51,13 @@ export function RouteReveal({ children, ready }: { children: ReactNode; ready: b
         const hero = target.closest(".hero, .page-intro, .landing-hero");
         if (hero) {
           const parts = [...hero.querySelectorAll<HTMLElement>(selector)];
-          const delay = hero.matches(".landing-hero") ? 650 + parts.indexOf(target) * 180 : target.matches(".hero-art, .bird") ? 440 : 70 + parts.indexOf(target) * 90;
+          const delay = hero.matches(".landing-hero") ? Math.min(parts.indexOf(target), 4) * 55 : target.matches(".hero-art, .bird") ? 220 : Math.min(parts.indexOf(target), 4) * 55;
           target.dataset.entryDelay = String(delay);
           target.style.setProperty("--reveal-delay", `${delay}ms`);
         }
         waiting.add(target);
       }
       for (const target of waiting) {
-        if (!media.matches && target.closest('.landing[data-artwork-ready="false"]')) continue;
         // Editorial copy and SVG art enter immediately, independently of API data.
         if (!media.matches && !readyRef.current && !target.closest(".hero, .page-intro, .landing-hero")) continue;
         waiting.delete(target);

@@ -20,7 +20,8 @@
     "test:feature-flow": "node tests/feature-flow.mjs",
     "test:starter-live": "node tests/starter-live.mjs",
     "test:finance": "node tests/finance.mjs",
-    "test:holder-access": "node tests/holder-access.mjs"
+    "test:holder-access": "node tests/holder-access.mjs",
+    "test:polish": "node tests/polish.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.2.0",

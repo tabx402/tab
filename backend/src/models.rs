@@ -275,6 +275,8 @@ pub struct WalletProof {
 #[derive(Clone, Serialize, Deserialize, ToSchema)]
 pub struct AgentEvent {
     pub id: i64,
+    #[serde(default)]
+    pub run_id: Option<String>,
     pub agent_id: String,
     pub agent: String,
     pub kind: String,

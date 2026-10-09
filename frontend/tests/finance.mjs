@@ -7,7 +7,7 @@ const page = await browser.newPage({ reducedMotion: 'reduce', viewport: { width:
 const errors = []; page.on('pageerror', reason => errors.push(reason.message));
 const owner = '0x1111111111111111111111111111111111111111', usdt = '0x55d398326f99059fF775485246999027B3197955';
 const pool = '0x2222222222222222222222222222222222222222', stocks = '0x3333333333333333333333333333333333333333', buyback = '0x4444444444444444444444444444444444444444', collateral = '0x5555555555555555555555555555555555555555';
-const lenderAbi = parseAbi(['function deposit(uint256 assets,address receiver)', 'function redeem(uint256 shares,address receiver,address owner)', 'function approveLoan((bytes32 id,bytes32 agent,bytes32 job,address signer,uint256 principal,uint256 perCall,uint256 dailyCap,uint64 expiresAt,uint64 tools,address[] recipients) t)', 'function acceptLoan(bytes32 id)', 'function spendLoan(bytes32 id,address recipient,uint256 amount,uint64 tool,bytes32 request,bytes32 receipt)', 'function repayLoan(bytes32 id,uint256 amount)', 'function closeLoan(bytes32 id)']);
+const lenderAbi = parseAbi(['function deposit(uint256 assets,address receiver)', 'function redeem(uint256 shares,address receiver,address owner)', 'function approveLoan((bytes32 id,bytes32 agent,bytes32 job,address signer,uint256 principal,uint256 perCall,uint256 dailyCap,uint64 expiresAt,uint64 tools,address[] recipients) t)', 'function acceptLoan(bytes32 id)', 'function spendLoan(bytes32 id,address recipient,uint256 amount,uint64 tool,bytes32 request,bytes32 receipt)', 'function repayLoan(bytes32 id,uint256 amount)', 'function closeLoan(bytes32 id)', 'function pledgeCollateral(bytes32 id) payable', 'function withdrawCollateral(bytes32 id,uint256 amount)', 'function liquidateLoan(bytes32 id,uint256 maxRepay,uint256 minimumCollateral)']);
 const stockAbi = parseAbi(['function deposit(uint256 assets,address receiver)', 'function redeem(uint256 shares,address receiver,address owner)', 'function borrow(bytes32 id,address token,uint256 collateralAmount,uint256 principal)', 'function addCollateral(bytes32 id,uint256 amount)', 'function withdrawCollateral(bytes32 id,uint256 amount)', 'function repay(bytes32 id,uint256 amount)', 'function liquidate(bytes32 id,uint256 principal,uint256 minimumCollateral)']);
 const buybackAbi = parseAbi(['function fund(uint256 amount)', 'function execute(uint256 amount,uint256 minimumTokens,uint256 deadline)']);
 const jobId = '99999999999999999999999999999999', borrowerAgentId = '77777777777777777777777777777777', borrower = '0x7777777777777777777777777777777777777777', merchant = '0x6666666666666666666666666666666666666666';
@@ -24,7 +24,8 @@ let prepared = [];
 let submitted = 0;
 let oracleFails = true;
 let pendingJobs = [];
-const account = () => ({ system, wallet: owner, status: 'ready', lending: { shares: '5', max_redeem: '2', share_value_usdt: '5', loans: [] }, stock_loans: { shares: '0', max_redeem: '0', share_value_usdt: '0', loans: [] }, requests: [advanceRequest], pending_intents: issued ? [issued] : [], pending_job_intents: pendingJobs, roles: { underwriter: true, buyback_operator: false } });
+let advanceLoans = [];
+const account = () => ({ system, wallet: owner, status: 'ready', lending: { shares: '5', max_redeem: '2', share_value_usdt: '5', loans: advanceLoans }, stock_loans: { shares: '0', max_redeem: '0', share_value_usdt: '0', loans: [] }, requests: [advanceRequest], pending_intents: issued ? [issued] : [], pending_job_intents: pendingJobs, roles: { underwriter: true, buyback_operator: false } });
 function buildIntent(body) {
   let details = { ...body, finance_module: 'lending', registry_id: '0x' + '1'.repeat(64) };
   let to = pool, data;
@@ -32,10 +33,11 @@ function buildIntent(body) {
   else if (body.action === 'advance_approve') {
     details = { ...body, registry_id: registryId, job_onchain_id: '0x' + jobId.padStart(64, '0'), finance_module: 'lending' };
     data = encodeFunctionData({ abi: lenderAbi, functionName: 'approveLoan', args: [{ id: loanId, agent: registryId, job: details.job_onchain_id, signer: borrower, principal: 10n ** 18n, perCall: 10n ** 17n, dailyCap: 10n ** 18n, expiresAt: BigInt(expires), tools: 16n, recipients: [merchant] }] });
-  } else throw Error(`Unexpected fixture action ${body.action}`);
-  const tx = { to, data, value: '0', chainId: '56' };
+  } else if (body.action === 'advance_pledge') data=encodeFunctionData({abi:lenderAbi,functionName:'pledgeCollateral',args:[body.loan_id]});
+  else throw Error(`Unexpected fixture action ${body.action}`);
+  const tx = { to, data, value: body.action === 'advance_pledge' ? String(BigInt(body.collateral_amount.replace('.','')) * 10n ** BigInt(18 - (body.collateral_amount.split('.')[1]?.length || 0))) : '0', chainId: '56' };
   const transactions = body.action === 'pool_deposit' ? [{ to: usdt, data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [pool, BigInt(body.amount) * 10n ** 18n] }), value: '0', chainId: '56' }, tx] : [tx];
-  return { id: 'local-finance-intent', agent_id: '1'.repeat(32), action: `finance_${body.action}`, chain_id: 56, network: 'mainnet', sender: owner, to, data, value: '0', transaction: tx, transactions, expires_at: new Date(Date.now() + 300000).toISOString(), details };
+  return { id: 'local-finance-intent', agent_id: '1'.repeat(32), action: `finance_${body.action}`, chain_id: 56, network: 'mainnet', sender: owner, to, data, value: tx.value, transaction: tx, transactions, expires_at: new Date(Date.now() + 300000).toISOString(), details };
 }
 await page.route('**/api/**', async route => {
   const path = new URL(route.request().url()).pathname;
@@ -103,6 +105,9 @@ try {
     ['advance_spend', lenderAbi, 'spendLoan', [loanId, merchant, principal, 16n, commitment, commitment], pool, { amount: '1', loan_id: loanId, recipient: merchant, tool: 'x402', request_hash: commitment, receipt_hash: commitment }],
     ['advance_repay', lenderAbi, 'repayLoan', [loanId, principal], pool, { amount: '1', loan_id: loanId }, usdt, principal],
     ['advance_close', lenderAbi, 'closeLoan', [loanId], pool, { amount: '0', loan_id: loanId }],
+    ['advance_pledge', lenderAbi, 'pledgeCollateral', [loanId], pool, { amount: '0', loan_id: loanId, collateral_amount: '0.1' }],
+    ['advance_withdraw_collateral', lenderAbi, 'withdrawCollateral', [loanId, 10n ** 17n], pool, { amount: '0', loan_id: loanId, collateral_amount: '0.1' }],
+    ['advance_liquidate', lenderAbi, 'liquidateLoan', [loanId, principal, 10n ** 15n], pool, { amount: '1', loan_id: loanId, minimum_out: '0.001', liquidation_repay_usdt: '0.75' }, usdt, 75n * 10n ** 16n],
     ['stock_borrow', stockAbi, 'borrow', [loanId, collateral, 2_000_000n, principal], stocks, { amount: '1', loan_id: loanId, token_address: collateral, collateral_amount: '2' }, collateral, 2_000_000n],
     ['stock_add_collateral', stockAbi, 'addCollateral', [loanId, 500_000n], stocks, { amount: '0', loan_id: loanId, token_address: collateral, collateral_amount: '0.5' }, collateral, 500_000n],
     ['stock_withdraw', stockAbi, 'withdrawCollateral', [loanId, 500_000n], stocks, { amount: '0', loan_id: loanId, token_address: collateral, collateral_amount: '0.5' }],
@@ -114,10 +119,20 @@ try {
   for (const [action, abi, functionName, args, to, fields, approvalToken, approvalAmount] of cases) {
     const body = { action, ...fields };
     const encoded = encodeFunctionData({ abi, functionName, args });
-    const tx = { to, data: encoded, value: '0', chainId: '56' };
+    const tx = { to, data: encoded, value: action === 'advance_pledge' ? String(10n ** 17n) : '0', chainId: '56' };
     const transactions = approvalToken ? [{ to: approvalToken, data: encodeFunctionData({ abi: erc20Abi, functionName: 'approve', args: [to, approvalAmount] }), value: '0', chainId: '56' }, tx] : [tx];
-    const intent = { ...goodIntent, action: `finance_${action}`, to, data: encoded, transaction: tx, transactions, details: { ...body, token_decimals: 6 } };
+    const intent = { ...goodIntent, action: `finance_${action}`, to, data: encoded, value: tx.value, transaction: tx, transactions, details: { ...body, token_decimals: 6 } };
     assert.equal(await page.evaluate(({ intent, data, input }) => window.checkFinancePayload(intent, data, input), { intent, data: validationData, input: body }), 'accepted', `${action} exact wallet payload rejected`);
+    if (action === 'advance_pledge') {
+      const wrongNative = structuredClone(intent); wrongNative.value = wrongNative.transaction.value = wrongNative.transactions.at(-1).value = String(2n * 10n ** 17n);
+      assert.match(await page.evaluate(({ intent, data, input }) => window.checkFinancePayload(intent, data, input), { intent: wrongNative, data: validationData, input: body }), /differs from its reviewed summary/, 'Native BNB pledge must bind the exact amount.');
+      const extraApproval = structuredClone(intent); extraApproval.transactions.unshift({ to: usdt, data: encodeFunctionData({abi: erc20Abi,functionName:'approve',args:[pool,principal]}),value:'0',chainId:'56'});
+      assert.match(await page.evaluate(({ intent, data, input }) => window.checkFinancePayload(intent, data, input), { intent: extraApproval, data: validationData, input: body }), /does not need a token approval/, 'Native pledge never approves a token.');
+    }
+    if (action === 'advance_liquidate') {
+      const excessApproval=structuredClone(intent); excessApproval.transactions[0].data=encodeFunctionData({abi:erc20Abi,functionName:'approve',args:[pool,principal]});
+      assert.match(await page.evaluate(({ intent, data, input }) => window.checkFinancePayload(intent, data, input), { intent: excessApproval, data: validationData, input: body }), /exact reviewed token amount/, 'Liquidation approves actual repayment only.');
+    }
     if (['stock_add_collateral', 'stock_withdraw'].includes(action)) {
       const changedAssetData = structuredClone(validationData);
       changedAssetData.system.modules.stock_loans.assets.find(asset => asset.token === collateral).decimals = 18;
@@ -140,6 +155,25 @@ try {
   pendingJobs = [];
   issued = null;
   await page.evaluate(() => localStorage.clear());
+  advanceLoans=[{id:loanId,agent:'0x'+'1'.repeat(64),job:jobId,borrower:owner,signer:owner,principal:'1',available:'1',debt:'0',loss:'0',spent:'0',repaid:'0',per_call:'0.1',daily_cap:'1',expires_at:expires,tools:['x402'],recipients:[merchant],accepted:true,closed:false,secured:true,collateral_symbol:'BNB',collateral:'0',collateral_value_usdt:'0',maximum_borrow_usdt:'0',available_borrowing_usdt:'0',liquidation_debt_usdt:'0',liquidatable:false,oracle_status:'verified',actions:{accept:false,spend:false,repay:false,close:true,pledge:true,withdraw_collateral:false,liquidate:false}}];
+  await page.goto(`${origin}/tests/finance.html?module=advances`, {waitUntil:'networkidle'});
+  await expect(page.getByText('pledged collateral',{exact:true})).toBeVisible();
+  await page.getByLabel('finance action',{exact:true}).selectOption('advance_pledge');
+  await page.getByLabel('job advance',{exact:true}).selectOption(loanId);
+  await page.getByLabel('advance BNB collateral amount',{exact:true}).fill('0.123456789012345678');
+  await page.getByRole('button',{name:'review finance transaction',exact:true}).click();
+  await expect(page.getByRole('button',{name:'confirm finance in wallet',exact:true})).toBeVisible();
+  assert.equal(issued.transactions.length,1);
+  assert.equal(BigInt(issued.value),123456789012345678n,'Native collateral keeps all 18 decimal places.');
+  issued=null; await page.evaluate(()=>localStorage.clear());
+  advanceLoans[0]={...advanceLoans[0],debt:'1',collateral:'0.001',collateral_value_usdt:null,maximum_borrow_usdt:null,available_borrowing_usdt:null,liquidation_debt_usdt:null,oracle_status:'unavailable',actions:{...advanceLoans[0].actions,repay:true}};
+  await page.reload({waitUntil:'networkidle'});
+  await expect(page.getByText('collateral price unavailable',{exact:true})).toBeVisible();
+  await page.getByLabel('finance action',{exact:true}).selectOption('advance_repay');
+  await expect(page.getByLabel('job advance',{exact:true}).locator(`option[value="${loanId}"]`)).toHaveCount(1);
+  await page.getByLabel('job advance',{exact:true}).selectOption(loanId);
+  await expect(page.getByRole('button',{name:'review finance transaction',exact:true})).toBeEnabled();
+  advanceLoans=[];
   await page.goto(`${origin}/tests/finance.html?module=stocks`, { waitUntil: 'networkidle' });
   await expect(page.getByLabel('finance action', { exact: true })).toHaveValue('stock_borrow');
   await page.getByLabel('approved stock token', { exact: true }).selectOption(collateral);
@@ -159,5 +193,5 @@ try {
   await expect(page.getByText('awaiting verification', { exact: true })).toHaveCount(3);
   for (const width of [320, 390, 768]) { await page.setViewportSize({ width, height: 844 }); assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${width}px finance overflow`); }
   assert.deepEqual(errors, []);
-  console.log('All 16 finance wallet actions, exact approvals/calldata/borrower-job binding, canonical advance principal, uncertain submission recovery, cross-agent/job blocking, quote precision/stale-oracle gates, deep links and mobile layouts passed.');
+  console.log('All 19 finance wallet actions, exact native BNB pledge, actual liquidation repayment, approvals/calldata/borrower-job binding, canonical advance principal, uncertain submission recovery, cross-agent/job blocking, quote precision/stale-oracle gates, deep links and mobile layouts passed.');
 } finally { await browser.close(); }

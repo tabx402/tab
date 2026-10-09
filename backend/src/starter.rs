@@ -410,9 +410,7 @@ impl AppState {
         let events = self
             .events(None, Some(agent_id), 0, 500)?
             .into_iter()
-            .filter(|e| {
-                e.timestamp >= started && finished.as_ref().is_none_or(|end| &e.timestamp <= end)
-            })
+            .filter(|e| e.run_id.as_deref() == Some(run_id))
             .collect::<Vec<_>>();
         Ok(
             json!({"id":run_id,"agent_id":agent_id,"agent":agent.plan.name,"task":agent.plan.purpose,"status":status,"started_at":started,"finished_at":finished,"tools":agent.plan.tools,"output":crate::runtime::safe_preview(&output),"events":events,"cost_accounting":"provider USD costs and confirmed USDT transfers are reported separately"}),

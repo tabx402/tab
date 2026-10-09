@@ -64,6 +64,12 @@
               "string",
               "null"
             ]
+          },
+          "run_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -584,6 +590,54 @@
               "null"
             ]
           },
+          "collateral_oracle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "collateral_oracle_status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "collateral_price_usdt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "collateral_symbol": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "liquidation_bonus_bps": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "liquidation_bps": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "ltv_bps": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
           "official_token": {
             "type": [
               "string",
@@ -611,6 +665,12 @@
           "reason": {
             "type": [
               "string",
+              "null"
+            ]
+          },
+          "secured": {
+            "type": [
+              "boolean",
               "null"
             ]
           },

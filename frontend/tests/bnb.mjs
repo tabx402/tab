@@ -25,6 +25,7 @@ await page.route('**/api/**',route=>{
  return route.fulfill({json:data});
 });
 await page.goto(`${origin}/activity`,{waitUntil:'networkidle'});
+await page.locator('.activity-entry').filter({hasText:'QA fixture payment'}).locator('summary').click();
 assert.equal(await page.getByRole('link',{name:'View payment transaction'}).getAttribute('href'),`https://bscscan.com/tx/${signature}`,'transaction links must target BscScan mainnet');
 for(const width of [1440,768,390,320]){
  await page.setViewportSize({width,height:1000});

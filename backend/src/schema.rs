@@ -289,7 +289,13 @@ pub fn document() -> Value {
         ),
         ("post", "/api/account/runtime/{id}/key", None, None, true),
         ("delete", "/api/account/runtime/{id}/key", None, None, true),
-        ("post", "/api/agent/run", Some("RunInput"), Some("AgentRun"), true),
+        (
+            "post",
+            "/api/agent/run",
+            Some("RunInput"),
+            Some("AgentRun"),
+            true,
+        ),
         ("get", "/api/activity", None, Some("AgentEvent[]"), false),
         (
             "post",
@@ -355,8 +361,20 @@ pub fn document() -> Value {
             true,
         ),
         ("get", "/api/account/jobs/{id}", None, Some("Job"), true),
-        ("post", "/api/account/jobs/{id}/run", None, Some("JobRun"), true),
-        ("get", "/api/account/jobs/{id}/runs", None, Some("JobRun[]"), true),
+        (
+            "post",
+            "/api/account/jobs/{id}/run",
+            None,
+            Some("JobRun"),
+            true,
+        ),
+        (
+            "get",
+            "/api/account/jobs/{id}/runs",
+            None,
+            Some("JobRun[]"),
+            true,
+        ),
         (
             "post",
             "/api/account/runtime/{id}/jobs",
@@ -400,8 +418,20 @@ pub fn document() -> Value {
             true,
         ),
         ("get", "/api/agent/jobs", None, Some("Job[]"), true),
-        ("post", "/api/agent/jobs/{id}/run", None, Some("JobRun"), true),
-        ("get", "/api/agent/jobs/{id}/runs", None, Some("JobRun[]"), true),
+        (
+            "post",
+            "/api/agent/jobs/{id}/run",
+            None,
+            Some("JobRun"),
+            true,
+        ),
+        (
+            "get",
+            "/api/agent/jobs/{id}/runs",
+            None,
+            Some("JobRun[]"),
+            true,
+        ),
         (
             "post",
             "/api/agent/jobs/{id}/branches",
@@ -550,7 +580,14 @@ pub fn document() -> Value {
             operation["responses"]["403"] =
                 json!({"description":"Wallet ownership or TAB holding is required"});
         }
-        if method == "post" && ["/api/account/agents", "/api/account/runtime", "/api/account/bounties"].contains(&path) {
+        if method == "post"
+            && [
+                "/api/account/agents",
+                "/api/account/runtime",
+                "/api/account/bounties",
+            ]
+            .contains(&path)
+        {
             params.push(json!({"name":"X-Tab-Holder-Wallet","in":"header","required":false,"description":"Selected wallet; ownership and current TAB holdings are verified by the server when holder access is enabled","schema":{"type":"string","pattern":"^0x[0-9a-fA-F]{40}$"}}));
         }
         if !params.is_empty() {

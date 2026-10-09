@@ -9,6 +9,19 @@ import {TabPriceOracle} from "../src/TabPriceOracle.sol";
 
 contract RejectNativeCollateral { receive() external payable { revert("native rejected"); } }
 
+contract ReenterNativeCollateral {
+    TabLendingPool immutable target;
+    bytes32 immutable loan;
+    bool public blocked;
+    bytes4 public blockedError;
+    constructor(TabLendingPool pool_, bytes32 id) { target = pool_; loan = id; }
+    receive() external payable {
+        (bool ok, bytes memory reason) = address(target).call(abi.encodeCall(target.withdrawCollateral, (loan, 1)));
+        blocked = !ok;
+        if (reason.length >= 4) blockedError = bytes4(reason);
+    }
+}
+
 contract TabWorkingCapitalTest is FinanceBase {
     TabLendingPool pool;
     FinanceFeed bnbFeed;
@@ -400,8 +413,9 @@ contract TabWorkingCapitalTest is FinanceBase {
         TabPriceOracle wrongCollateral = new TabPriceOracle(address(wrong), address(usdt), address(bnbFeed), address(stableFeed), 1 hours, 1 hours);
         vm.expectRevert(TabLendingPool.Collateral.selector);
         new TabLendingPool(address(protocol), address(wrongCollateral));
+        address wrongQuote = _oracle(address(wrong));
         vm.expectRevert(TabLendingPool.Collateral.selector);
-        new TabLendingPool(address(protocol), _oracle(address(wrong)));
+        new TabLendingPool(address(protocol), wrongQuote);
     }
 
     function testApprovalAndAcceptanceDoNotCreateUnsecuredSpendingPower() public {
@@ -422,6 +436,7 @@ contract TabWorkingCapitalTest is FinanceBase {
 
     function testCollateralIsIsolatedAndOnlyBorrowerCanRecoverIt() public {
         _line();
+        vm.deal(lender, 1 ether);
         vm.prank(lender);
         vm.expectRevert(TabUSDTLiquidity.Authority.selector);
         pool.pledgeCollateral{value: 1}(LOAN);
@@ -567,6 +582,37 @@ contract TabWorkingCapitalTest is FinanceBase {
         pool.withdrawCollateral(LOAN, 0.1 ether);
         assertEq(pool.collateral(LOAN), 0.1 ether);
         assertEq(pool.totalCollateral(), 0.1 ether);
+    }
+
+    function testNativeReceiverCannotReenterCollateralWithdrawal() public {
+        _line();
+        ReenterNativeCollateral attacker = new ReenterNativeCollateral(pool, LOAN);
+        vm.etch(borrower, address(attacker).code);
+        vm.prank(borrower);
+        pool.withdrawCollateral(LOAN, 0.05 ether);
+        assertTrue(ReenterNativeCollateral(payable(borrower)).blocked());
+        assertEq(ReenterNativeCollateral(payable(borrower)).blockedError(), bytes4(keccak256("ReentrancyGuardReentrantCall()")));
+        assertEq(pool.collateral(LOAN), 0.05 ether);
+        assertEq(pool.totalCollateral(), 0.05 ether);
+    }
+
+    function testWorthlessNativeDustCannotPreventResidualLossRecovery() public {
+        _line();
+        _spend(500, keccak256("tiny-debt"));
+        vm.prank(borrower);
+        pool.withdrawCollateral(LOAN, 0.1 ether - 1);
+        bnbFeed.set(1);
+        _approve(address(usdt), merchant, address(pool));
+        (uint256 repaid, uint256 seized) = pool.liquidationQuote(LOAN, 500);
+        assertEq(repaid, 1);
+        assertEq(seized, 1);
+        vm.prank(merchant);
+        pool.liquidateLoan(LOAN, 500, 1);
+        assertEq(pool.collateral(LOAN), 0);
+        assertEq(pool.getLoan(LOAN).debt, 499);
+        vm.warp(block.timestamp + 8 days);
+        pool.recognizeLoss(LOAN);
+        assertEq(pool.getLoan(LOAN).loss, 499);
     }
 
     function testFuzzLiquidationConservesCollateralAndPrincipal(uint128 debtSeed, uint128 priceSeed) public {

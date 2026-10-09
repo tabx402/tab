@@ -6,21 +6,8 @@ import { explorer, useChainId } from "../lib/evm";
 import { usdtUnits, amountFromUnits, formatAmount } from "../lib/amounts";
 import type { AgentEvent, RegistryData } from "../lib/api";
 import type { components } from "../lib/api-schema";
-const kindName = (kind: string) =>
-  ({
-    run_started: "run started",
-    run_completed: "run finished",
-    run_partial: "partial run",
-    run_failed: "run failed",
-    tool_result: "tool result",
-    provider_payment: "payment",
-    payment_required: "approval needed",
-    registered: "registered",
-    paused: "paused",
-    resumed: "resumed",
-    key_created: "access key",
-    tool_unavailable: "tool unavailable",
-  })[kind] ?? kind.replaceAll("_", " ");
+import { groupActivity, isSettledPayment, paymentKinds } from "../lib/activity";
+import { ActivityEntry } from "./ActivityEntry";
 type ActivitySource = "activity" | "registry" | "agents";
 const unavailable = (event: AgentEvent) =>
   ["run_failed", "payment_failed", "tool_unavailable"].includes(event.kind) ||
@@ -99,24 +86,21 @@ export function LiveActivity({ compact = false, controls = false }: { compact?: 
     (e) =>
       (filter === "all" ||
         (filter === "payments"
-          ? ["provider_payment", "payment_resolved"].includes(e.kind)
+          ? paymentKinds.includes(e.kind)
           : filter === "runs"
             ? e.kind.startsWith("run_")
-            : filter === "attention" ? unavailable(e) || partialRun(e) || e.status === "awaiting_approval" : e.kind === "registered")) &&
+            : filter === "attention" ? unavailable(e) || partialRun(e) || ["awaiting_approval", "requires_authorization"].includes(e.status) : e.kind === "registered")) &&
       `${e.agent} ${e.message} ${e.provider ?? ""}`
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
-  const payments = events.filter(
-    (e) =>
-      ["provider_payment", "payment_resolved"].includes(e.kind) &&
-      ["confirmed", "settled", "paid_delivery_failed"].includes(e.status) &&
-      e.currency === "USDT",
-  );
+  const payments = events.filter(isSettledPayment);
+  const matching = new Set(filtered.map(event => event.id));
+  const groups = groupActivity(events).filter(group => group.events.some(event => matching.has(event.id)));
   const completed = events.filter(e => e.kind === "run_completed" && e.status === "completed");
   const partial = events.filter(partialRun);
   const failures = events.filter(unavailable);
-  const approvals = events.filter(e => e.status === "awaiting_approval");
+  const approvals = events.filter(e => ["awaiting_approval", "requires_authorization"].includes(e.status));
   const settledPayments = new Map(payments.map(event => [event.tx_hash ? `${event.agent_id}:${event.tx_hash.toLowerCase()}` : `event:${event.id}`, event]));
   const paid = [...settledPayments.values()].reduce((total, event) => total + (usdtUnits(event.amount ?? "") ?? 0n), 0n);
   const exportLog = () => {
@@ -243,38 +227,8 @@ export function LiveActivity({ compact = false, controls = false }: { compact?: 
       {errors.registry && <p role="alert" className="form-error">Registration data is temporarily unavailable. {loaded.registry ? "Registered totals may be out of date." : "Registered totals are not available yet."}</p>}
       {errors.agents && <p role="alert" className="form-error">Agent data is temporarily unavailable. {loaded.agents ? "Agent totals may be out of date." : "Agent totals are not available yet."}</p>}
       <div className="readable-log">
-        {filtered.slice(0, compact ? 3 : 500).map((e) => (
-          <div className="readable-log-row" data-status={e.status} data-kind={e.kind} key={e.id}>
-            <time title={e.timestamp}>
-              {new Date(e.timestamp).toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </time>
-            <span className={`log-kind ${e.kind}`} data-status={e.status}>{partialRun(e) ? "partial run" : kindName(e.kind)}</span>
-            <div>
-              <strong>{e.agent}</strong>
-              <p>{e.message}</p>
-            </div>
-            <span className="event-outcome" data-status={e.status}>
-              {e.amount && e.currency
-                ? `${e.amount} ${e.currency}`
-                : e.status.replaceAll("_", " ")}
-            </span>
-            {e.tx_hash ? (
-              <a
-                aria-label="View payment transaction"
-                href={explorer(e.tx_hash, "tx", chainId)}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <ArrowUpRight size={14} />
-              </a>
-            ) : (
-              <span />
-            )}
-          </div>
-        ))}
+        {!compact && groups.length > 0 && <div className="activity-columns" aria-hidden="true"><span>time</span><span>agent / task</span><span>result</span><span>recorded cost</span><span>status</span><span /></div>}
+        {groups.slice(0, compact ? 3 : 500).map(group => <ActivityEntry key={group.key} group={group} />)}
         {!filtered.length && (
           <div className="empty">
             {!loaded.activity

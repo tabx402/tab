@@ -60,7 +60,7 @@ impl Store {
           CREATE INDEX IF NOT EXISTS agent_plan_owner ON agent_plans(owner);
           CREATE TABLE IF NOT EXISTS runtime_agents(id TEXT PRIMARY KEY,owner TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL);
           CREATE INDEX IF NOT EXISTS runtime_owner ON runtime_agents(owner);
-          CREATE TABLE IF NOT EXISTS agent_events(id INTEGER PRIMARY KEY AUTOINCREMENT,agent_id TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,at TEXT NOT NULL,message TEXT NOT NULL,provider TEXT,amount TEXT,currency TEXT,tx_hash TEXT);
+          CREATE TABLE IF NOT EXISTS agent_events(id INTEGER PRIMARY KEY AUTOINCREMENT,agent_id TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,at TEXT NOT NULL,message TEXT NOT NULL,provider TEXT,amount TEXT,currency TEXT,tx_hash TEXT,run_id TEXT);
           CREATE TABLE IF NOT EXISTS agent_runs(id TEXT PRIMARY KEY,agent_id TEXT NOT NULL,status TEXT NOT NULL,started_at TEXT NOT NULL,finished_at TEXT,output TEXT NOT NULL);
           CREATE UNIQUE INDEX IF NOT EXISTS active_agent_run ON agent_runs(agent_id) WHERE status='running';
           CREATE TABLE IF NOT EXISTS job_runs(id TEXT PRIMARY KEY,job_id TEXT NOT NULL,agent_id TEXT NOT NULL,owner TEXT NOT NULL,status TEXT NOT NULL,started_at TEXT NOT NULL,finished_at TEXT,output TEXT NOT NULL);
@@ -90,6 +90,17 @@ impl Store {
           SELECT agent_id FROM agent_public_exclusions
           UNION SELECT a.id AS agent_id FROM runtime_agents a JOIN registry_public_exclusions x
             ON lower(x.registry_id)=lower(json_extract(a.payload,'$.registry_id'));",
+        )?;
+        let event_columns = db
+            .prepare("PRAGMA table_info(agent_events)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        if !event_columns.iter().any(|column| column == "run_id") {
+            db.execute("ALTER TABLE agent_events ADD COLUMN run_id TEXT", [])?;
+        }
+        db.execute(
+            "CREATE INDEX IF NOT EXISTS agent_event_run ON agent_events(agent_id,run_id,id)",
+            [],
         )?;
         let mut statement = db.prepare("PRAGMA table_info(job_intents)")?;
         let columns = statement

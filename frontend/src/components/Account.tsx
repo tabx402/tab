@@ -303,12 +303,12 @@ function AgentAccount({ config }: { config: Config }) {
           <Bird small />
           <h2>your agent starts here.</h2>
           <p>Choose its job, connect its tools, and follow each run.</p>
-          <OnboardingCosts sponsored={config.gas_sponsorship_enabled}/>
           <button className="primary" disabled={!ready} onClick={() => login({ loginMethods: ["wallet"] })}>
             connect wallet
             <ArrowUpRight size={15} />
           </button>
           <button className="text-link" disabled={!ready} onClick={() => login({ loginMethods: ["email"] })}>continue with email</button>
+          <OnboardingCosts sponsored={config.gas_sponsorship_enabled}/>
         </section>
       ) : (
         <>

@@ -5813,6 +5813,7 @@ export interface components {
             status: string;
             timestamp: string;
             tx_hash?: string | null;
+            run_id?: string | null;
         };
         AgentInput: {
             cadence?: string;
@@ -5933,11 +5934,22 @@ export interface components {
             assets: components["schemas"]["FinanceAsset"][];
             available_usdt?: string | null;
             burn_method?: string | null;
+            collateral_oracle?: string | null;
+            collateral_oracle_status?: string | null;
+            collateral_price_usdt?: string | null;
+            collateral_symbol?: string | null;
+            /** Format: int32 */
+            liquidation_bonus_bps?: number | null;
+            /** Format: int32 */
+            liquidation_bps?: number | null;
+            /** Format: int32 */
+            ltv_bps?: number | null;
             official_token?: string | null;
             operator?: string | null;
             outstanding_usdt?: string | null;
             paused?: boolean | null;
             reason?: string | null;
+            secured?: boolean | null;
             spent_usdt?: string | null;
             status: string;
             /** Format: int32 */

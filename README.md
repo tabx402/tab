@@ -77,9 +77,11 @@ The table below describes the production API and repository configuration checke
 | Models and web research | OpenRouter and its research route report connected; usage has a separate provider-credit budget. | [providers](https://tabagents.io/api/providers), [capabilities](https://tabagents.io/api/capabilities) |
 | Job escrow | Core job system reports live; direct job-service payments are disabled in the current configuration. | [job system](https://tabagents.io/api/jobs/system) |
 | Wallet-funded x402 | BNB/USDT merchant configuration reports quote-ready and settlement enabled. Customer-funded end-to-end delivery has not been established by this repository review. | [x402 system](https://tabagents.io/api/x402/system) |
-| Direct secured credit | Current source and deployment manifest specify collateralized, zero-interest credit. Each line still requires lender funding and borrower collateral. | [TabBacking](contracts/bnb/src/TabBacking.sol), [manifest](contracts/deployments/bnb-56.json) |
+| Direct secured credit | Collateralized, zero-interest credit supports USDT and WBNB. Each line requires lender funding, borrower acceptance and explicitly pledged collateral. | [credit assets](https://tabagents.io/api/credit/assets), [finance receipt](contracts/deployments/bnb-finance-56-receipt.json) |
 | Official TAB token features | Official TAB is configured on BNB. Holder access, staking, holder fee exemptions, bounty claims and job outcomes are enabled subject to their individual terms. | [token system](https://tabagents.io/api/token/system) |
-| Additional finance modules | Pooled advances, stock loans and buyback modules report not deployed. | [finance system](https://tabagents.io/api/finance/system) |
+| Secured pooled advances | Native-BNB-backed pool deployed and verified with 50% borrowing limit, 75% liquidation threshold and 5% bonus. Lender deposits and borrower collateral are separate wallet actions. | [finance system](https://tabagents.io/api/finance/system), [finance receipt](contracts/deployments/bnb-finance-56-receipt.json) |
+| Stock-loan module | Deployed with an empty collateral whitelist. Stock borrowing awaits issuer-adjusted token price feeds and market policy. | [finance system](https://tabagents.io/api/finance/system), [configuration](backend/config/finance-bnb.json) |
+| Buybacks | Deployment awaits a verified working swap route for official TAB. No buyback funding or execution is implied. | [finance system](https://tabagents.io/api/finance/system) |
 
 The API verifies contract code and configuration before preparing financial actions. Availability can change with deployment checks, provider budgets, sponsor funds and merchant configuration.
 
@@ -140,6 +142,10 @@ The production network is BNB Smart Chain, chain 56. USDT is `0x55d398326f99059f
 `contracts/deployments/bnb-56.json` identifies the deployed modules, transaction hashes, source hash and runtime code hashes. The API checks chain ID, USDT bytecode/decimals, module bytecode and module wiring before enabling financial actions. A successful build alone does not enable settlement.
 
 The original landing and botanical garden remain. Activity and economic counters live at `/activity`, with visible loading, stale-data and failure states. The app does not seed paid activity or fabricate lending volume.
+
+The navigation keeps garden, jobs, tools and docs close at hand. Press Ctrl K or Cmd K to search pages and documentation. The landing walkthrough is explicitly illustrative; selecting a real garden plant opens its public result and recorded spending. Tools are grouped by research, chain reads, models and paid requests.
+
+New activity events carry an explicit `run_id`, so related tool outcomes appear together with their run. Historical events without that ID remain separate. Provider-credit costs in USD and verified USDT payments stay distinct. The nullable database migration preserves existing records, and public previews require the exact agent and run IDs.
 
 | Resource | What it pays for | Funding source |
 | --- | --- | --- |
@@ -284,7 +290,9 @@ The stock catalog uses issuer-published BNB token contracts. Custody checks toke
 
 ## optional finance modules
 
-The pool, job advances, stock-collateral lending and explicitly funded buyback modules live beside the immutable deployed protocol. See [the contract mechanics, tests and deployment requirements](contracts/bnb/README.md#additional-finance-modules). `backend/config/finance-bnb.json` starts with null addresses and an empty collateral whitelist. Source implementation and passing local tests do not enable live borrowing. Every module requires matching deployed runtime, protocol, asset and configuration verification.
+The pool, job advances, stock-collateral lending and explicitly funded buyback modules live beside the immutable deployed protocol. See [the contract mechanics, tests and deployment requirements](contracts/bnb/README.md#additional-finance-modules). `backend/config/finance-bnb.json` records each verified runtime and its dependency pins. Stock borrowing requires a separate token-specific collateral whitelist. Every module requires matching deployed runtime, protocol, asset and configuration verification.
+
+Pooled job advances use native BNB collateral with a 50% borrowing limit, a 75% liquidation threshold and a 5% liquidation bonus. Borrowers accept the line and pledge collateral before spending. Its immutable oracle values BNB through reviewed BNB/USD and USDT/USD feeds. Repayment and debt-free withdrawal remain available during oracle outages or loss of TAB eligibility. The pool needs lender deposits before it can reserve an advance; a funded job alone supplies no pool liquidity. The core protocol and the additional pool maintain separate spending counters.
 
 `GET /api/finance/system` reports module status, liquidity and verified collateral. `POST /api/finance/quote` returns exact onchain quotes. Authenticated `/api/account/runtime/{id}/finance`, `/finance/requests` and `/finance/prepare` provide owned positions, immutable advance requests and wallet-reviewed actions. Existing wallet-action submission and confirmation endpoints reconcile exact receipts.
 
@@ -352,6 +360,7 @@ export TAB_TEST_ORIGIN=http://127.0.0.1:5197
 npm run test:bnb --prefix frontend
 npm run test:jobs --prefix frontend
 node frontend/tests/activity.mjs
+npm run test:polish --prefix frontend
 node frontend/tests/evm-wallet.mjs
 npm run test:payments --prefix frontend
 npm run test:wallet-actions --prefix frontend
@@ -369,6 +378,8 @@ Browser tests use a local Vite instance; check each script for its origin overri
 `node scripts/bnb-release-v2.mjs plan` creates a public plan from compiled artifacts. `deploy` requires the project key injected by Ryan Vault, validates the signer/nonce/chain and simulates each transaction. The flow deploys the three modules, wires them once and imports existing agent identities from the retained legacy manifest. It transfers no USDT, lending capital or customer assets. A hard 0.005 BNB total gas cap and 1 gwei gas-price ceiling apply. The public journal records every broadcast before proceeding. `verify` compares deployed code with compiled runtime, immutable configuration and module wiring.
 
 Before activating a registry migration, stop the API and run `scripts/migrate-bnb-registration.py DATABASE contracts/deployments/bnb-56-legacy.json contracts/deployments/bnb-56.json` for a read-only check. It verifies canonical import receipts, unchanged identities and the absence of pending financial commitments. Apply with `TAB_V2_DATABASE_AUTHORIZATION=preserve-bnb56-agent-history` and `--apply`; it creates a restricted database backup and preserves owners, registration receipts, access keys, runs and payments. A rollback across registries also requires restoring that database backup while the API is stopped. Keep the backup until the migrated release is verified.
+
+Optional finance deployment uses `node scripts/bnb-finance-release.mjs plan`, followed by `deploy` with the project deployer injected through Ryan Vault and the reviewed plan hash in `TAB_FINANCE_DEPLOY_AUTHORIZATION`. The plan derives exact constructors and WBNB collateral configuration from compiled source, binds dependency and oracle-aggregator hashes, and limits aggregate gas to 0.005 BNB. Its private signed journal is persisted before broadcast. `verify` reconciles the same transaction hashes with twelve canonical confirmations and produces a public receipt plus a backend configuration. Funding, loan approvals, stock whitelisting and swaps have separate wallet flows.
 
 Build the backend/frontend before publishing an immutable release:
 
