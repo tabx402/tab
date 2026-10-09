@@ -3,12 +3,22 @@ pragma solidity 0.8.28;
 
 import {TabUSDTLiquidity} from "./TabUSDTLiquidity.sol";
 import {TabTypes as T} from "./TabTypes.sol";
+import {ITabPriceOracle} from "./TabPriceOracle.sol";
+import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 
-/// @notice Pooled, unsecured, zero-interest USDT working capital for a specific funded Tab job.
-/// @dev The underwriter approves risk; the agent owner accepts every line. Lenders can lose principal.
+/// @notice Pooled, native-BNB-secured, zero-interest USDT working capital for a funded Tab job.
+/// @dev The owner accepts every line and explicitly pledges BNB. Lenders bear residual liquidation loss.
 /// The existing immutable escrow pays its executor normally; repayment is explicit, not intercepted.
 contract TabLendingPool is TabUSDTLiquidity {
     uint64 public constant LOSS_GRACE = 7 days;
+    uint64 public constant LIQUIDATION_GRACE = 1 days;
+    address public constant WBNB = 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c;
+    uint16 public constant LTV_BPS = 5000;
+    uint16 public constant LIQUIDATION_BPS = 7500;
+    uint16 public constant LIQUIDATION_BONUS_BPS = 500;
+    ITabPriceOracle public immutable collateralOracle;
+    mapping(bytes32 => uint256) public collateral;
+    uint256 public totalCollateral;
 
     struct LoanTerms {
         bytes32 id;
@@ -65,8 +75,99 @@ contract TabLendingPool is TabUSDTLiquidity {
     );
     event LoanRepaid(bytes32 indexed loan, address indexed payer, uint256 principal);
     event LoanClosed(bytes32 indexed loan, uint256 released);
+    event CollateralPledged(bytes32 indexed loan, address indexed borrower, uint256 amount);
+    event CollateralWithdrawn(bytes32 indexed loan, address indexed borrower, uint256 amount);
+    event LoanLiquidated(bytes32 indexed loan, address indexed liquidator, uint256 repaid, uint256 seized);
+    error Collateral();
 
-    constructor(address protocol_) TabUSDTLiquidity(protocol_, "Tab working capital USDT", "tabWC") {}
+    constructor(address protocol_, address collateralOracle_)
+        TabUSDTLiquidity(protocol_, "Tab secured working capital USDT", "tabWC")
+    {
+        collateralOracle = ITabPriceOracle(collateralOracle_);
+        if (collateralOracle_.code.length == 0 || collateralOracle.token() != WBNB
+            || collateralOracle.quoteToken() != address(usdt) || collateralOracle.price() == 0) revert Collateral();
+    }
+
+    function securedCreditVersion() external pure returns (uint256) { return 1; }
+
+    /// @return value USDT value, borrowing maximum debt, liquidationDebt threshold for liquidation.
+    function collateralQuote(uint256 amount) public view returns (uint256 value, uint256 borrowing, uint256 liquidationDebt) {
+        uint256 price = collateralOracle.price();
+        if (price == 0) revert Collateral();
+        value = Math.mulDiv(amount, price, 1 ether);
+        borrowing = Math.mulDiv(value, LTV_BPS, 10_000);
+        liquidationDebt = Math.mulDiv(value, LIQUIDATION_BPS, 10_000);
+    }
+
+    function loanHealth(bytes32 id) external view returns (uint256 value, uint256 borrowing, uint256 liquidationDebt, bool liquidatable) {
+        (value, borrowing, liquidationDebt) = collateralQuote(collateral[id]);
+        Loan storage l = loans[id];
+        liquidatable = l.debt > 0 && (l.debt > liquidationDebt || block.timestamp > uint256(l.expiresAt) + LIQUIDATION_GRACE);
+    }
+
+    /// Risk-reducing top-ups remain available during pauses, holder loss and oracle failure.
+    function pledgeCollateral(bytes32 id) external payable nonReentrant {
+        Loan storage l = loans[id];
+        if (msg.sender != l.borrower || msg.value == 0 || (l.closed && l.debt == 0)) revert Authority();
+        collateral[id] += msg.value;
+        totalCollateral += msg.value;
+        emit CollateralPledged(id, msg.sender, msg.value);
+    }
+
+    /// Debt-free exit never depends on the oracle, the TAB balance, or job status.
+    function withdrawCollateral(bytes32 id, uint256 amount) external nonReentrant {
+        Loan storage l = loans[id];
+        if (msg.sender != l.borrower || amount == 0 || amount > collateral[id]) revert Authority();
+        collateral[id] -= amount;
+        if (l.debt > 0) {
+            (,uint256 borrowing,) = collateralQuote(collateral[id]);
+            if (l.debt > borrowing) revert Collateral();
+        }
+        totalCollateral -= amount;
+        _payNative(msg.sender, amount);
+        emit CollateralWithdrawn(id, msg.sender, amount);
+    }
+
+    /// The requested USDT amount is a maximum. Insolvent liquidation repays only the exact collateral quote.
+    function liquidationQuote(bytes32 id, uint256 maximum) public view returns (uint256 repaid, uint256 seized) {
+        Loan storage l = loans[id];
+        if (maximum == 0 || maximum > l.debt || collateral[id] == 0) revert Terms();
+        uint256 price = collateralOracle.price();
+        if (price == 0) revert Collateral();
+        uint256 value = Math.mulDiv(collateral[id], price, 1 ether);
+        if (l.debt <= Math.mulDiv(value, LIQUIDATION_BPS, 10_000)
+            && block.timestamp <= uint256(l.expiresAt) + LIQUIDATION_GRACE) revert Collateral();
+        uint256 coveredDebt = Math.mulDiv(value, 10_000, 10_000 + LIQUIDATION_BONUS_BPS);
+        repaid = Math.min(maximum, coveredDebt);
+        if (repaid == 0) revert Collateral();
+        if (maximum >= coveredDebt) seized = collateral[id];
+        else {
+            uint256 withBonus = Math.mulDiv(repaid, 10_000 + LIQUIDATION_BONUS_BPS, 10_000, Math.Rounding.Ceil);
+            seized = Math.min(collateral[id], Math.mulDiv(withBonus, 1 ether, price, Math.Rounding.Ceil));
+        }
+        if (seized == 0) revert Collateral();
+    }
+
+    function liquidateLoan(bytes32 id, uint256 maximum, uint256 minimumCollateral) external nonReentrant {
+        (uint256 repaid, uint256 seized) = liquidationQuote(id, maximum);
+        if (minimumCollateral == 0 || seized < minimumCollateral) revert Collateral();
+        Loan storage l = loans[id];
+        _close(id, l);
+        uint256 recoveredLoss = Math.min(repaid, l.loss);
+        l.loss -= recoveredLoss;
+        l.debt -= repaid;
+        l.repaid += repaid;
+        collateral[id] -= seized;
+        totalCollateral -= seized;
+        _repay(msg.sender, repaid, repaid - recoveredLoss);
+        _payNative(msg.sender, seized);
+        emit LoanLiquidated(id, msg.sender, repaid, seized);
+    }
+
+    function _payNative(address recipient, uint256 amount) private {
+        (bool ok,) = recipient.call{value: amount}("");
+        if (!ok) revert TransferFailed();
+    }
 
     function getLoan(bytes32 id) external view returns (Loan memory) {
         return loans[id];
@@ -79,6 +180,7 @@ contract TabLendingPool is TabUSDTLiquidity {
     function approveLoan(LoanTerms calldata t) external {
         if (msg.sender != underwriter) revert Authority();
         T.Agent memory a = protocol.getAgent(t.agent);
+        _requireTabHolder(a.owner);
         T.Job memory j = protocol.getJob(t.job);
         if (
             paused || t.id == 0 || loans[t.id].borrower != address(0) || jobLoan[t.job] != 0
@@ -124,6 +226,7 @@ contract TabLendingPool is TabUSDTLiquidity {
     }
 
     function acceptLoan(bytes32 id) external {
+        _requireTabHolder(msg.sender);
         Loan storage l = loans[id];
         if (msg.sender != l.borrower) revert Authority();
         if (paused || l.closed || l.accepted || block.timestamp >= l.expiresAt) revert Terms();
@@ -133,6 +236,7 @@ contract TabLendingPool is TabUSDTLiquidity {
     }
 
     function _active(Loan storage l) internal view returns (T.Agent memory a, T.Job memory j) {
+        _requireTabHolder(l.borrower);
         a = protocol.getAgent(l.agent);
         j = protocol.getJob(l.job);
         if (
@@ -168,6 +272,8 @@ contract TabLendingPool is TabUSDTLiquidity {
             if (j.recipients[i] == recipient) jobAllowed = true;
         }
         if (!allowed || !jobAllowed) revert Authority();
+        (,uint256 borrowing,) = collateralQuote(collateral[id]);
+        if (l.debt + amount > borrowing) revert Collateral();
         uint64 day = uint64(block.timestamp / 1 days);
         if (l.spendDay != day) {
             l.spendDay = day;
@@ -209,6 +315,11 @@ contract TabLendingPool is TabUSDTLiquidity {
         T.Job memory j = protocol.getJob(l.job);
         bool expired = block.timestamp >= l.expiresAt || j.state >= 3;
         if (msg.sender != l.borrower && msg.sender != underwriter && !expired) revert Authority();
+        _close(id, l);
+    }
+
+    function _close(bytes32 id, Loan storage l) private {
+        if (l.closed) return;
         uint256 released = l.available;
         l.available = 0;
         l.closed = true;
@@ -220,7 +331,7 @@ contract TabLendingPool is TabUSDTLiquidity {
     function recognizeLoss(bytes32 id) external {
         if (msg.sender != underwriter) revert Authority();
         Loan storage l = loans[id];
-        if (!l.closed || block.timestamp < uint256(l.expiresAt) + LOSS_GRACE || l.debt <= l.loss) {
+        if (!l.closed || collateral[id] != 0 || block.timestamp < uint256(l.expiresAt) + LOSS_GRACE || l.debt <= l.loss) {
             revert Terms();
         }
         uint256 loss = l.debt - l.loss;

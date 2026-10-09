@@ -6,7 +6,7 @@
   "usdt_decimals": 18,
   "usdt_code_hash": "0x97a48aa4c129657440dafdacd4c836389734d28cc4a0ca7403e68da660a74a59",
   "authority": "0x00e128e7779ea927a087b40ade268dedc1b34a90",
-  "official_tab_address": null,
+  "official_tab_address": "0xf07449517ae4b48808098c573a5347e67c714444",
   "fee_bps": 50,
   "credit_mode": "collateralized",
   "holder_exemption_scope": "executor wallet balance at settlement",
@@ -40,5 +40,14 @@
     }
   },
   "deployed_at": "2026-10-09T01:06:21.263Z",
-  "gas_cost_bnb": "0.0005647686"
+  "gas_cost_bnb": "0.0005647686",
+  "official_tab_code_hash": "0x01f0430e2bbc285e7a55cc7409977eccb1b7b944068956cffcb7dac5c75b3d1f",
+  "official_tab_implementation_address": "0x46862924e2a229170ebd065e24a0da72af58a986",
+  "official_tab_implementation_code_hash": "0xa5529c201b5fdf90cdcddd546521c4e75374e47fdb1aa356859307a4532da97f",
+  "official_tab_name": "Tabx402",
+  "official_tab_symbol": "TAB",
+  "official_tab_decimals": 18,
+  "holder_access_enabled": true,
+  "official_tab_configuration_transaction": "0x16e2c70fbb00844359bba9f71db964049a09f42a827356f92d8be661ced9e05f",
+  "official_tab_configuration_block": 126569823
 }

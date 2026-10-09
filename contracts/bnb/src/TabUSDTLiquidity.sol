@@ -9,6 +9,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {TabProtocol} from "./TabProtocol.sol";
+import {TabHolderAccess} from "./TabHolderAccess.sol";
 
 /// @dev Principal-only ERC4626 pool. Outstanding loans are receivables, not withdrawable cash.
 /// Direct token donations are excluded from accounting. Governance cannot withdraw lender assets.
@@ -54,6 +55,16 @@ abstract contract TabUSDTLiquidity is ERC4626, ReentrancyGuard {
         return liquidity + outstanding;
     }
 
+    function holderGateVersion() external pure returns (uint256) { return 1; }
+
+    function hasTabAccess(address account) public view returns (bool) {
+        return TabHolderAccess.eligible(protocol, account);
+    }
+
+    function _requireTabHolder(address account) internal view {
+        TabHolderAccess.requireHolder(protocol, account);
+    }
+
     function availableLiquidity() public view returns (uint256) {
         return liquidity - reserved;
     }
@@ -68,12 +79,12 @@ abstract contract TabUSDTLiquidity is ERC4626, ReentrancyGuard {
         return Math.min(super.maxWithdraw(owner), availableLiquidity());
     }
 
-    function maxDeposit(address) public view override returns (uint256) {
-        return protocol.MAX_BUDGET();
+    function maxDeposit(address receiver) public view override returns (uint256) {
+        return hasTabAccess(receiver) ? protocol.MAX_BUDGET() : 0;
     }
 
-    function maxMint(address) public view override returns (uint256) {
-        return _convertToShares(protocol.MAX_BUDGET(), Math.Rounding.Floor);
+    function maxMint(address receiver) public view override returns (uint256) {
+        return hasTabAccess(receiver) ? _convertToShares(protocol.MAX_BUDGET(), Math.Rounding.Floor) : 0;
     }
 
     function maxRedeem(address owner) public view override returns (uint256) {
@@ -81,11 +92,15 @@ abstract contract TabUSDTLiquidity is ERC4626, ReentrancyGuard {
     }
 
     function deposit(uint256 assets, address receiver) public override nonReentrant returns (uint256) {
+        _requireTabHolder(msg.sender);
+        _requireTabHolder(receiver);
         if (assets == 0 || receiver == address(0) || receiver == address(this)) revert Terms();
         return super.deposit(assets, receiver);
     }
 
     function mint(uint256 shares, address receiver) public override nonReentrant returns (uint256) {
+        _requireTabHolder(msg.sender);
+        _requireTabHolder(receiver);
         if (shares == 0 || receiver == address(0) || receiver == address(this)) revert Terms();
         return super.mint(shares, receiver);
     }

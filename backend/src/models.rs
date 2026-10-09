@@ -332,6 +332,7 @@ pub struct AgentRecord {
 }
 #[derive(Clone, Serialize, Deserialize, ToSchema)]
 pub struct PublicConfig {
+    pub holder_access_enabled: bool,
     pub app_id: Option<String>,
     pub financial_actions_enabled: bool,
     pub contracts_status: String,
@@ -353,47 +354,6 @@ pub struct Health {
     pub status: String,
     pub financial_actions_enabled: bool,
     pub backend: String,
-}
-#[derive(Clone, Serialize, Deserialize, ToSchema, Default)]
-pub struct Summary {
-    pub credit_limit: f64,
-    pub spent: f64,
-    pub repaid: f64,
-    pub outstanding: f64,
-    pub agents: u64,
-}
-#[derive(Clone, Serialize, Deserialize, ToSchema)]
-pub struct AgentExample {
-    pub id: String,
-    pub name: String,
-    pub purpose: String,
-    pub limit: f64,
-    pub outstanding: f64,
-    pub spent: f64,
-    pub repaid: f64,
-    pub repayments: u64,
-    pub backer: String,
-    pub providers: Vec<String>,
-    pub status: String,
-}
-#[derive(Clone, Serialize, Deserialize, ToSchema)]
-pub struct Receipt {
-    pub id: String,
-    pub timestamp: String,
-    pub agent: String,
-    pub kind: String,
-    pub provider: Option<String>,
-    pub amount: f64,
-    pub description: String,
-    pub example: bool,
-}
-#[derive(Clone, Serialize, Deserialize, ToSchema)]
-pub struct PublicData {
-    pub mode: String,
-    pub summary: Summary,
-    pub agents: Vec<AgentExample>,
-    pub receipts: Vec<Receipt>,
-    pub series: Vec<Value>,
 }
 #[derive(Clone, Serialize, Deserialize, ToSchema)]
 pub struct RegisteredAgent {
@@ -489,6 +449,11 @@ pub struct SponsoredChallenge {
 #[derive(Clone, Serialize, Deserialize, ToSchema)]
 pub struct PauseInput {
     pub paused: bool,
+}
+#[derive(Debug, Default, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RunInput {
+    pub quote_id: Option<String>,
 }
 #[derive(Clone, Serialize, Deserialize, ToSchema)]
 pub struct JobMerchant {

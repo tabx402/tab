@@ -4,9 +4,11 @@ import assert from 'node:assert/strict';
 const origin=process.env.TAB_TEST_ORIGIN || 'http://127.0.0.1:5197';
 const fixture=JSON.parse(readFileSync(new URL('./jobs-data.json',import.meta.url)));
 for(const job of [...fixture.jobs,...fixture.public]) job.deadline=new Date(Date.now()+(job.parent_id?3:4)*3600000).toISOString();
+for(const job of fixture.jobs){job.buyer_wallet=fixture.agents.find(agent=>agent.id===job.requester_id)?.wallet;job.executor_wallet=fixture.agents.find(agent=>agent.id===job.executor_id)?.wallet;}
 const browser=await chromium.launch();
 const page=await browser.newPage({viewport:{width:1440,height:1000},reducedMotion:'reduce'});
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
+const jobRuns=new Map();let jobRunCount=0,jobRunPartial=false;
 await page.route('**/api/**',r=>{
  const path=new URL(r.request().url()).pathname;
  const data=path==='/api/config'?{app_id:null,chain_id:56,network:'mainnet',financial_actions_enabled:false,contracts_status:'not_deployed',gas_sponsorship_enabled:false,payments_enabled:false,agent_execution_enabled:false}:path==='/api/overview'?{mode:'public',summary:{credit_limit:0,spent:0,repaid:0,outstanding:0,agents:0},agents:[],receipts:[],series:[]}:path==='/api/registry'?{status:'not_deployed',agents:[],transactions:[]}:[];
@@ -17,6 +19,9 @@ await page.route('**/api/jobs/system',r=>r.fulfill({json:{status:'not_deployed',
 await page.route('**/api/jobs/services',r=>r.fulfill({json:[]}));
 await page.route('**/api/agents/live',r=>r.fulfill({json:fixture.agents}));
 await page.route('**/api/jobs',r=>r.fulfill({json:fixture.public}));
+await page.route(/\/api\/account\/jobs\?/,r=>r.fulfill({json:fixture.jobs}));
+await page.route('**/api/account/jobs/*/runs',r=>r.fulfill({json:jobRuns.get(new URL(r.request().url()).pathname.split('/')[4])||[]}));
+await page.route('**/api/account/jobs/*/run',r=>{const id=new URL(r.request().url()).pathname.split('/')[4],job=fixture.jobs.find(value=>value.id===id);jobRunCount++;const run={id:'job-run-'+jobRunCount,job_id:id,agent_id:job.executor_id,status:jobRunPartial?'partial':'completed',started_at:'2026-10-09T01:00:00Z',finished_at:'2026-10-09T01:00:01Z',output:{job_id:id,terms_hash:job.terms_hash,task:job.description,tools:jobRunPartial?{x402:{status:'requires_authorization',message:'Paid data needs wallet authorization.',settled_usdt:false}}:{chain:{chain_id:56,block:123456,wallet:fixture.agents[0].wallet,bnb:'0.1',usdt:'5'}},evidence_status:jobRunPartial?'not_attached':'attached',...(jobRunPartial?{}:{evidence_hash:'0x'+'b'.repeat(64)})}};jobRuns.set(id,[run,...(jobRuns.get(id)||[])]);if(!jobRunPartial){job.evidence={task:job.description,tools:run.output.tools};job.evidence_hash=run.output.evidence_hash;}return r.fulfill({json:run});});
 await page.goto(`${origin}/agents`,{waitUntil:'networkidle'});
 assert.equal(await page.locator('.garden-stage canvas').count(),1);
 assert.equal(await page.locator('.garden-job').count(),1);
@@ -33,6 +38,8 @@ const input=JSON.parse(await page.evaluate(()=>document.body.dataset.input));
 assert.equal(input.budget,'5');assert.deepEqual(input.tools,['bnb-rpc']);
 await page.getByRole('button',{name:'cancel',exact:true}).click();
 await page.locator('.owned-job').filter({hasText:'observe a confirmed block'}).click();
+assert.equal(await page.getByRole('button',{name:'run job',exact:true}).count(),0,'unfunded draft jobs cannot claim agent execution');
+assert.equal(await page.getByRole('button',{name:'collect observation',exact:true}).count(),0,'generic observation control is removed');
 await page.getByRole('button',{name:'delegate a branch'}).click();
 assert.equal(await page.getByLabel('total budget · USDT',{exact:true}).getAttribute('max'),'4');
 assert.equal(await page.getByLabel('per-call cap · USDT',{exact:true}).getAttribute('max'),'0.1');
@@ -60,4 +67,64 @@ assert.equal(await page.getByRole('button',{name:'accept evidence and pay',exact
 fixture.walletMode=true;await page.goto(`${origin}/tests/jobs.html`,{waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:branch.title}).click();
 await page.getByRole('button',{name:'accept evidence and pay',exact:true}).click();await page.evaluate(()=>localStorage.setItem('qa:job-send-mode','rejected'));await page.getByRole('button',{name:'sign accept',exact:true}).click();await page.getByText('Wallet request rejected.',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'sign accept',exact:true}).count(),1,'an explicit wallet rejection allows retry');
 await page.evaluate(()=>localStorage.setItem('qa:job-send-mode','unknown'));await page.getByRole('button',{name:'sign accept',exact:true}).click();await page.getByText('RPC response lost.',{exact:true}).waitFor();await page.reload({waitUntil:'networkidle'});assert.equal(await page.getByRole('button',{name:'sign accept',exact:true}).count(),0,'unknown no-hash submission survives reload without server pending state');await page.getByLabel('submitted job transaction hash',{exact:true}).fill('0x'+'a'.repeat(64));await page.getByRole('button',{name:'check confirmation',exact:true}).click();await page.locator('.job-wallet-review').waitFor({state:'detached'});assert.ok(await page.evaluate(()=>document.body.dataset.submitted),'manual reconciliation records the submitted hash before confirmation');assert.equal(await page.evaluate(()=>localStorage.getItem('tab-job-action:qa-job-intent')),null);
-assert.deepEqual(errors,[]);await browser.close();console.log('Original garden, job disclosures, draft bounds, root buyer approval at every depth and mobile layouts passed.');
+root.state='open';root.funding='funded';root.evidence=null;root.evidence_hash=null;root.description='Deliver the assigned liquidity report with its observed wallet balances.';
+await page.goto(`${origin}/tests/jobs.html`,{waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:root.title}).click();await page.getByRole('button',{name:'run job',exact:true}).click();await page.locator('[data-job-run-status=completed]').waitFor();assert.equal(jobRunCount,1);assert.equal(await page.locator('.job-run .run-receipt-task p').innerText(),root.description);await page.getByText('Result saved as job evidence.',{exact:false}).waitFor();assert.equal(await page.getByRole('button',{name:'submit evidence',exact:true}).count(),1);
+await page.reload({waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:root.title}).click();await page.locator('[data-job-run-status=completed]').waitFor();assert.equal(jobRunCount,1,'reading stored job output never starts another run');
+jobRunPartial=true;root.evidence=null;root.evidence_hash=null;await page.reload({waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:root.title}).click();await page.getByRole('button',{name:'run job',exact:true}).click();await page.locator('[data-job-run-status=partial]').waitFor();await page.getByText('This run did not attach completed evidence.',{exact:false}).waitFor();assert.equal(await page.getByRole('button',{name:'submit evidence',exact:true}).count(),0,'partial tools cannot create completed submit evidence');
+for(const gate of ['paused','expired','executor_paused']){root.paused=gate==='paused';root.deadline=new Date(Date.now()+(gate==='expired'?-1:4*3600)*1000).toISOString();fixture.agents[0].status=gate==='executor_paused'?'paused':'ready';await page.reload({waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:root.title}).click();assert.equal(await page.getByRole('button',{name:'run job',exact:true}).isDisabled(),true,gate+' blocks job execution');}
+assert.equal(jobRunCount,2,'gated jobs cannot start tool calls');
+root.paused=false;fixture.agents[0].status='ready';root.deadline=new Date(Date.now()+4*3600000).toISOString();await page.goto(`${origin}/tests/jobs.html?holder=blocked`,{waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:root.title}).click();for(const name of ['give it a job','delegate a branch','run job'])assert.equal(await page.getByRole('button',{name,exact:true}).isDisabled(),true,`non-holder cannot ${name}`);
+assert.equal(await page.getByRole('button',{name:'review cancellation',exact:true}).isDisabled(),true,'holder recovery does not bypass open child allocations');
+branch.state='closed';await page.reload({waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:root.title}).click();assert.equal(await page.getByRole('button',{name:'review cancellation',exact:true}).isEnabled(),true,'non-holder keeps eligible cancellation after its branches close');
+await page.getByRole('button',{name:'pause job tree',exact:true}).click();assert.equal(await page.getByRole('button',{name:'sign pause',exact:true}).isEnabled(),true,'non-holder can sign a risk-reducing pause');
+for(const width of [320,390,768]){await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'stored job receipts fit '+width+'px');}
+// An accepted child is paid work, but the parent still waits for its distinct close transaction.
+root.state='submitted';root.evidence_hash='0x'+'b'.repeat(64);root.paused=false;root.requester_id=fixture.agents[0].id;root.executor_id=fixture.agents[0].id;
+branch.state='accepted';branch.funding='funded';branch.available='0';branch.reward_paid='1';
+await page.goto(`${origin}/tests/jobs.html`,{waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:root.title}).click();
+assert.equal(await page.getByRole('button',{name:'accept evidence and pay',exact:true}).isDisabled(),true,'paid but unclosed children block parent acceptance');
+assert.equal(await page.getByRole('button',{name:'request revision',exact:true}).isEnabled(),true,'children do not block a contract-permitted rejection');
+assert.equal(await page.getByRole('button',{name:'review cancellation',exact:true}).isDisabled(),true,'children block parent refunds too');
+await page.locator('.owned-job').filter({hasText:branch.title}).click();await page.getByRole('button',{name:'review branch closure',exact:true}).click();
+assert.equal(JSON.parse(await page.evaluate(()=>document.body.dataset.prepared)).action,'close_branch');
+assert.equal(await page.getByRole('button',{name:'sign close branch',exact:true}).count(),1,'closing a paid branch is a reviewed wallet action');
+assert.equal(branch.state,'accepted','preparing closure never marks a branch closed');
+await page.evaluate(()=>localStorage.setItem('qa:job-send-mode','unknown'));await page.getByRole('button',{name:'sign close branch',exact:true}).click();await page.getByText('RPC response lost.',{exact:true}).waitFor();
+branch.state='closed'; // The mock server now exposes the canonical close transaction for reconciliation.
+await page.getByLabel('submitted job transaction hash',{exact:true}).fill('0x'+'c'.repeat(64));await page.getByRole('button',{name:'check confirmation',exact:true}).click();
+await page.getByText('Branch closure is confirmed onchain.',{exact:false}).waitFor();
+assert.equal(await page.getByRole('button',{name:'review branch closure',exact:true}).count(),0,'confirmed branch closure cannot be repeated');
+await page.locator('.owned-job').filter({hasText:root.title}).click();assert.equal(await page.getByRole('button',{name:'accept evidence and pay',exact:true}).isEnabled(),true,'explicit closed child releases parent acceptance');
+branch.state='open';await page.reload({waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:root.title}).click();assert.equal(await page.getByRole('button',{name:'accept evidence and pay',exact:true}).isDisabled(),true,'open funded child also blocks settlement');
+branch.state='cancelled';await page.reload({waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:root.title}).click();assert.equal(await page.getByRole('button',{name:'accept evidence and pay',exact:true}).isEnabled(),true,'returned child allocation no longer blocks settlement');
+// Either the root buyer or immediate parent executor may close an accepted branch, never its executor alone.
+branch.state='accepted';root.requester_id='outside-buyer';fixture.owned_ids=[fixture.agents[0].id];
+await page.reload({waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:branch.title}).click();assert.equal(await page.getByRole('button',{name:'review branch closure',exact:true}).isEnabled(),true,'parent executor can close accepted work');
+fixture.owned_ids=[fixture.agents[1].id];await page.reload({waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:branch.title}).click();assert.equal(await page.getByRole('button',{name:'review branch closure',exact:true}).count(),0,'branch executor cannot self-close an allocation');
+root.requester_id=fixture.agents[0].id;root.executor_id=fixture.agents[1].id;branch.requester_id=fixture.agents[1].id;fixture.owned_ids=[fixture.agents[0].id];
+await page.reload({waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:branch.title}).click();assert.equal(await page.getByRole('button',{name:'review branch closure',exact:true}).isEnabled(),true,'root buyer can close a descendant without owning its parent executor');
+// Contract timestamps are whole seconds: submission and review include their cutoff second, refunds start after it.
+const boundary=new Date('2026-10-09T12:00:00Z');await page.clock.install({time:boundary});await page.clock.pauseAt(boundary);
+root.state='open';root.deadline=boundary.toISOString();root.executor_id=fixture.agents[0].id;root.requester_id=fixture.agents[1].id;root.paused=true;branch.state='closed';
+await page.reload({waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:root.title}).click();
+assert.equal(await page.getByRole('button',{name:'submit evidence',exact:true}).isEnabled(),true,'timely submission stays available at the deadline during root pause');
+assert.equal(await page.getByRole('button',{name:'run job',exact:true}).isDisabled(),true,'pause still prevents new tool execution');
+await page.getByRole('button',{name:'submit evidence',exact:true}).click();assert.equal(JSON.parse(await page.evaluate(()=>document.body.dataset.prepared)).action,'submit');
+await page.clock.runFor(1000);await page.getByRole('button',{name:'sign submit',exact:true}).click();await page.getByText('Evidence must be submitted by the original job deadline.',{exact:true}).waitFor();
+assert.equal(await page.getByLabel('submitted job transaction hash',{exact:true}).count(),0,'an expired reviewed submission never invokes the wallet');
+await page.reload({waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:root.title}).click();assert.equal(await page.getByRole('button',{name:'submit evidence',exact:true}).isDisabled(),true,'submission stops after the deadline second');
+root.state='submitted';root.paused=false;root.requester_id=fixture.agents[0].id;root.executor_id=fixture.agents[1].id;root.deadline='2026-10-08T12:00:00Z';
+await page.clock.setSystemTime(boundary);await page.reload({waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:root.title}).click();
+assert.equal(await page.locator('.owned-job-detail .job-pairs span').filter({hasText:'review ends'}).locator('time').getAttribute('datetime'),boundary.toISOString(),'review cutoff is exactly deadline plus 24 hours');
+assert.equal(await page.getByRole('button',{name:'accept evidence and pay',exact:true}).isEnabled(),true,'acceptance includes the review cutoff second');
+assert.equal(await page.getByRole('button',{name:'reject evidence',exact:true}).isEnabled(),true,'after delivery deadline the label does not promise a possible revision');
+assert.equal(await page.getByRole('button',{name:'review cancellation',exact:true}).isDisabled(),true,'buyer refund is unavailable at the exact review cutoff');
+await page.clock.runFor(1000);
+assert.equal(await page.getByRole('button',{name:'accept evidence and pay',exact:true}).isDisabled(),true);assert.equal(await page.getByRole('button',{name:'reject evidence',exact:true}).isDisabled(),true);assert.equal(await page.getByRole('button',{name:'review cancellation',exact:true}).isEnabled(),true,'buyer refund opens after cutoff');
+assert.equal(await page.evaluate(()=>document.body.dataset.prepared),undefined,'time passing does not automatically prepare settlement or refund');
+root.paused=true;await page.reload({waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:root.title}).click();assert.equal(await page.getByRole('button',{name:'review cancellation',exact:true}).isEnabled(),true,'pause cannot block an eligible buyer refund');
+branch.state='submitted';branch.deadline='2026-10-08T11:00:00Z';await page.reload({waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:branch.title}).click();assert.equal(await page.getByRole('button',{name:'review cancellation',exact:true}).isEnabled(),true,'root buyer can return an expired branch without owning its assigned parties');
+fixture.owned_ids=[fixture.agents[1].id];await page.reload({waitUntil:'networkidle'});await page.locator('.owned-job').filter({hasText:branch.title}).click();assert.equal(await page.getByRole('button',{name:'review cancellation',exact:true}).isEnabled(),true,'executor cancellation remains available after review expiry');
+assert.equal(jobRunCount,2,'lifecycle and clock checks never execute additional tools');
+for(const width of [320,390,768]){await page.setViewportSize({width,height:900});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'exact lifecycle times and closure controls fit '+width+'px');}
+assert.deepEqual(errors,[]);await browser.close();console.log('Real garden/job disclosures, draft bounds, root buyer approval, wallet recovery, actual funded-job run endpoint/task/evidence, durable private outputs, partial/unfunded/paused/expired execution gates and mobile layouts passed.');

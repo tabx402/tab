@@ -6,6 +6,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {TabProtocol} from "./TabProtocol.sol";
+import {TabHolderAccess} from "./TabHolderAccess.sol";
 
 interface ITabSwapRouter {
     function getAmountsOut(uint256 amountIn, address[] calldata path)
@@ -107,6 +108,7 @@ contract TabBuyback is ReentrancyGuard {
 
     /// Funding is an explicit, irreversible contribution to the stated buyback route.
     function fund(uint256 amount) external nonReentrant {
+        TabHolderAccess.requireHolder(protocol, msg.sender);
         if (amount == 0 || amount > protocol.MAX_BUDGET()) revert Terms();
         uint256 before_ = usdt.balanceOf(address(this));
         uint256 senderBefore = usdt.balanceOf(msg.sender);
@@ -141,6 +143,7 @@ contract TabBuyback is ReentrancyGuard {
     /// Only the designated operator executes; a quote is a slippage bound, not a manipulation-resistant oracle.
     function execute(uint256 amount, uint256 minimumTokens, uint256 deadline) external nonReentrant {
         if (msg.sender != operator) revert Authority();
+        TabHolderAccess.requireHolder(protocol, msg.sender);
         if (
             paused || amount == 0 || amount > availableUsdt() || deadline < block.timestamp
                 || deadline > block.timestamp + 10 minutes

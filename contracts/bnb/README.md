@@ -2,7 +2,7 @@
 
 The active contracts are non-upgradeable Solidity contracts for BNB Smart Chain (chain 56). BNB pays gas. Jobs, execution budgets, outcome pools and lending use 18-decimal Binance-Peg USDT at `0x55d398326f99059fF775485246999027B3197955`. The constructor rejects other production chains/tokens; chain 31337 permits local test tokens.
 
-The active `TabProtocol`, `TabBacking`, `TabEconomics` and shared `TabTypes` sources implement the v2 deployment recorded in [the current manifest](../deployments/bnb-56.json). The protocol charges 0.5% on accepted work rewards, with a zero fee for executors holding the configured official TAB token at settlement. The backing contract supports collateralized, zero-interest credit and liquidation. The official TAB address is currently unset, so the holder exemption is inactive.
+The active `TabProtocol`, `TabBacking`, `TabEconomics` and shared `TabTypes` sources implement the v2 deployment recorded in [the current manifest](../deployments/bnb-56.json). The protocol charges 0.5% on accepted work rewards, with a zero fee for executors holding the configured official TAB token at settlement. The backing contract supports collateralized, zero-interest credit and liquidation. The configured official TAB token is `0xf07449517ae4b48808098c573a5347e67c714444` on BNB (18 decimals). Its fixed proxy implementation and code hash are pinned in the active manifest.
 
 The previous 2% unsecured deployment is retained in [the legacy manifest](../deployments/bnb-56-legacy.json). Historical experiments are preserved in [future/unsupported-legacy-credit](future/unsupported-legacy-credit/README.md), outside the active source and test directories. Old addresses and experimental ABIs cannot substitute for the active deployment. Verify runtime hashes and module wiring against the selected manifest before preparing transactions.
 
@@ -59,7 +59,7 @@ USDT collateral is configured at construction with a 90% borrowing limit, 95% li
 
 `TabEconomics` can deploy a fixed-supply agent BEP-20 coin with no further minting, pause or tax, or record an existing coin. Existing-token pairing certifies identity only, not issuer permissions. It supports time-locked custody of a verified official TAB token, objective missed-deadline bonds using each agent's paired coin, and USDT pari-mutuel outcomes. Bonds never promise dollar reimbursement. Outcome pools measure only whether the executor posted evidence before the job deadline, not work quality. One-sided pools and qualifying early cancellations refund contributors; winner payouts conserve rounding dust. TAB holder-gated public bounty claims are in `TabProtocol`.
 
-Staking, holder-gated bounty claims and outcomes remain unavailable until the official TAB address is configured. Core registration, execution budgets, jobs, lending, backing and user-authorized agent coin deployment work independently of it. The archived chain implementation is outside the active repository tree.
+Official TAB configuration enables staking, holder-gated bounty claims and outcomes. Bounty claims and outcome participation also require the relevant agent token. Staking locks tokens for 1–31 days and pays no rewards; only TAB still in the wallet counts for app access and the fee exemption. The app requires TAB holdings for new actions, while deployed core registration, budgets, jobs and backing retain their existing onchain permissions. The archived chain implementation is outside the active repository tree.
 
 ## Additional finance modules
 

@@ -10,7 +10,21 @@ export type PaymentSystem = { status: string; network: string; currency: string;
 export type PaymentOffer = { amount_units: string; resource: { url: string; description?: string }; accepted: { amount: string; asset: string; network: string; payTo: string; extra: { assetTransferMethod?: string } } };
 export type PermitData = { domain: { name: string; chainId: number; verifyingContract: string }; primaryType: string; types: Record<string, {name:string;type:string}[]>; message: { permitted: {token:string;amount:string}; spender:string; nonce:string; deadline:string; witness:{to:string;validAfter:string} } };
 export type PaymentQuote = { quote_id?: string; provider:string; sender:string; chain_id:number; currency:string; status:string; offer:PaymentOffer; transactions?:EvmTransaction[]; typed_data?:PermitData; expires_at?:number };
-export type PaymentHistory = { quote_id:string; provider:string; status:string; expires_at:number; amount:string; tx_hash?:string|null };
+export type PaymentDelivery = {
+  status: "pending_payment" | "completed" | "failed_after_payment" | "unavailable";
+  quote_id: string;
+  provider: string;
+  resource_url: string;
+  received_at: string | null;
+  response_hash: string | null;
+  tx_hash: string | null;
+  amount: string;
+  currency: "USDT";
+  settled_usdt: boolean;
+  data: unknown;
+  cached: boolean;
+};
+export type PaymentHistory = { quote_id:string; provider:string; status:string; expires_at:number; amount:string; tx_hash?:string|null; delivery?:PaymentDelivery|null };
 const permitTypes = {
   EIP712Domain: [{name:"name",type:"string"},{name:"chainId",type:"uint256"},{name:"verifyingContract",type:"address"}],
   PermitWitnessTransferFrom: [{name:"permitted",type:"TokenPermissions"},{name:"spender",type:"address"},{name:"nonce",type:"uint256"},{name:"deadline",type:"uint256"},{name:"witness",type:"Witness"}],

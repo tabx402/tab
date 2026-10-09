@@ -1,0 +1,13 @@
+{
+  "chain_id": 56,
+  "from": "0x00E128E7779EA927a087B40AdE268Dedc1B34A90",
+  "to": "0xA99Cf06fCdE993a6d2FaA73A2c82d67980Fd0416",
+  "amount_bnb": "0.1",
+  "value_wei": "100000000000000000",
+  "gas": "21000",
+  "gas_price_wei": "50000000",
+  "data": "0x",
+  "nonce": 9,
+  "created_at": "2026-10-09T00:32:50.483Z",
+  "automatic_topups": false
+}

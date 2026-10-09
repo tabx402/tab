@@ -60,8 +60,20 @@ impl AppState {
         id: &str,
         mut input: FinancialInput,
     ) -> Result<TransactionIntent> {
-        if ["open_credit", "accept_credit", "spend_credit", "pledge_collateral", "withdraw_collateral", "liquidate_credit"].contains(&input.action.as_str()) && self.bnb.manifest()?["credit_mode"] != "collateralized" {
-            return Err(ApiError::unavailable("Secured credit requires the current collateralized deployment."));
+        if [
+            "open_credit",
+            "accept_credit",
+            "spend_credit",
+            "pledge_collateral",
+            "withdraw_collateral",
+            "liquidate_credit",
+        ]
+        .contains(&input.action.as_str())
+            && self.bnb.manifest()?["credit_mode"] != "collateralized"
+        {
+            return Err(ApiError::unavailable(
+                "Secured credit requires the current collateralized deployment.",
+            ));
         }
         self.bnb.require_deployment().await?;
         let agent = self.store.agent(owner, id)?;
@@ -668,8 +680,14 @@ impl AppState {
                     "Choose the credit signer.",
                 )?)?;
                 approval = Some((self.config.usdt.clone(), total));
-                let collateral = input.token_address.clone().unwrap_or_else(|| self.config.usdt.clone());
-                let risk = self.bnb.view("backing", "collateralAssets", vec![bnb::addr(&collateral)?]).await?;
+                let collateral = input
+                    .token_address
+                    .clone()
+                    .unwrap_or_else(|| self.config.usdt.clone());
+                let risk = self
+                    .bnb
+                    .view("backing", "collateralAssets", vec![bnb::addr(&collateral)?])
+                    .await?;
                 if bnb::number(&risk["ltvBps"])? == 0 || risk["paused"] == true {
                     return Err(ApiError::unavailable("This collateral does not have an enabled token price oracle and borrowing policy."));
                 }
@@ -677,47 +695,69 @@ impl AppState {
                 self.bnb.instruction(
                     "backing",
                     "openCreditWithCollateral",
-                    vec![Token::Tuple(vec![
-                        bnb::bytes32(&credit)?,
-                        bnb::bytes32(&target)?,
-                        signer,
-                        bnb::uint(total),
-                        bnb::uint(per),
-                        bnb::uint(daily),
-                        bnb::uint(expires as u128),
-                        bnb::uint(tool_bitmap(&input.tools).into()),
-                        Token::Array(recipients),
-                    ]), bnb::addr(&collateral)?],
+                    vec![
+                        Token::Tuple(vec![
+                            bnb::bytes32(&credit)?,
+                            bnb::bytes32(&target)?,
+                            signer,
+                            bnb::uint(total),
+                            bnb::uint(per),
+                            bnb::uint(daily),
+                            bnb::uint(expires as u128),
+                            bnb::uint(tool_bitmap(&input.tools).into()),
+                            Token::Array(recipients),
+                        ]),
+                        bnb::addr(&collateral)?,
+                    ],
                 )?
             }
             "pledge_collateral" | "withdraw_collateral" | "liquidate_credit" => {
                 let credit = required(&input.credit_id, "Choose the exact credit agreement.")?;
-                let position = self.bnb.view("backing", "collateralPositions", vec![bnb::bytes32(credit)?]).await?;
+                let position = self
+                    .bnb
+                    .view(
+                        "backing",
+                        "collateralPositions",
+                        vec![bnb::bytes32(credit)?],
+                    )
+                    .await?;
                 let token = position["token"].as_str().ok_or_else(ApiError::internal)?;
                 let decimals = self.bnb.token_decimals(token).await?;
-                if input.token_address.as_deref().is_some_and(|t|t!=token) {
-                    return Err(ApiError::validation("Use the collateral token named in this credit agreement."));
+                if input.token_address.as_deref().is_some_and(|t| t != token) {
+                    return Err(ApiError::validation(
+                        "Use the collateral token named in this credit agreement.",
+                    ));
                 }
                 input.token_address = Some(token.into());
                 let mut args = vec![bnb::bytes32(credit)?];
                 let method = if input.action == "liquidate_credit" {
                     let amount = positive(input.amount)?;
                     approval = Some((self.config.usdt.clone(), amount));
-                    let minimum = input.minimum_collateral_out.ok_or_else(||ApiError::validation("Set the minimum collateral you will receive."))?;
+                    let minimum = input.minimum_collateral_out.ok_or_else(|| {
+                        ApiError::validation("Set the minimum collateral you will receive.")
+                    })?;
                     let minimum = token_units(minimum, decimals)?;
-                    if minimum == 0 { return Err(ApiError::validation("The minimum collateral must be positive.")); }
-                    args.extend([bnb::uint(amount),bnb::uint(minimum)]);
+                    if minimum == 0 {
+                        return Err(ApiError::validation(
+                            "The minimum collateral must be positive.",
+                        ));
+                    }
+                    args.extend([bnb::uint(amount), bnb::uint(minimum)]);
                     "liquidateCredit"
                 } else {
                     let amount = token_units(input.amount, decimals)?;
-                    if amount == 0 { return Err(ApiError::validation("Choose a positive collateral amount.")); }
+                    if amount == 0 {
+                        return Err(ApiError::validation("Choose a positive collateral amount."));
+                    }
                     args.push(bnb::uint(amount));
                     if input.action == "pledge_collateral" {
                         approval = Some((token.into(), amount));
                         "pledgeCollateral"
-                    } else { "withdrawCollateral" }
+                    } else {
+                        "withdrawCollateral"
+                    }
                 };
-                self.bnb.instruction("backing",method,args)?
+                self.bnb.instruction("backing", method, args)?
             }
             "spend_credit" | "session_pay" => {
                 let recipient = bnb::address(required(

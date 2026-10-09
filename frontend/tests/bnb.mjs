@@ -5,6 +5,7 @@ const origin = process.env.TAB_TEST_ORIGIN || 'http://127.0.0.1:5198';
 mkdirSync('../qa', { recursive: true });
 const browser = await chromium.launch();
 const errors = [];
+let illustrationRequests = 0;
 const models = ['openai/gpt-4.1-mini','openai/gpt-4.1','anthropic/claude-sonnet-4','google/gemini-2.5-flash','deepseek/deepseek-chat-v3-0324'].map(id=>({id,name:id.split('/')[1],provider:id.split('/')[0],available:true,status:'connected',billing:'development credits',max_output_tokens:256}));
 const signature='0x'+'4'.repeat(64);
 const cfg={app_id:null,chain_id:56,network:'mainnet',contracts_status:'not_deployed',financial_actions_enabled:false,gas_sponsorship_enabled:false,payments_enabled:false,agent_execution_enabled:false};
@@ -14,7 +15,7 @@ await page.route('**/api/**',route=>{
  const path=new URL(route.request().url()).pathname;
  let data=[];
  if(path==='/api/config')data=cfg;
- else if(path==='/api/overview')data={mode:'public',summary:{credit_limit:0,spent:0,repaid:0,outstanding:0,agents:0},agents:[],receipts:[],series:[]};
+ else if(path==='/api/overview'){illustrationRequests++;return route.fulfill({status:410,json:{detail:'The illustrative overview was removed.'}});}
  else if(path==='/api/registry')data={status:'not_deployed',chain_id:56,address:null,agents:[],transactions:[]};
  else if(path==='/api/tools')data={'bnb-rpc':true,openrouter:true,tavily:false,x402:true};
  else if(path==='/api/models')data=models;
@@ -36,18 +37,15 @@ for(const width of [1440,768,390,320]){
    assert.equal(await page.locator('.landing-hero').count(),1,'home restores the original landing hero');
    assert.match(await page.locator('.landing-hero h1').innerText(),/x402 agent/);
    assert.equal(await page.locator('.home-work-metrics').count(),0,'economic dashboard belongs on the activity page');
-   assert.equal(await page.locator('.starter-wallet').count(),1,'the free wallet check is the first task');
-   assert.equal(await page.locator('.landing-walkthrough').count(),1,'setup walkthrough stays available in a disclosure');
-   await page.locator('.landing-walkthrough summary').click();
-   assert.equal(await page.locator('video').count(),1,'the focused landing shows the setup walkthrough');
-   assert.equal(await page.locator('video').evaluateAll(nodes=>nodes.every(video=>video.paused)),true,'reduced motion keeps walkthroughs paused');
-   assert.equal(await page.locator('.film-frame').evaluateAll(nodes=>nodes.every(node=>node.getBoundingClientRect().width<=800)),true,'walkthroughs remain capped at 800px');
+   assert.equal(await page.locator('.starter-wallet').count(),0,'onboarding uses the agent wallet rather than a separate sample lookup');
+   assert.equal(await page.locator('.landing-walkthrough, .film-frame, video').count(),0,'recorded demonstrations are removed from the product');
    if([320,768,1440].includes(width)){
     await page.evaluate(()=>window.scrollTo(0,0));
     await page.screenshot({path:`../qa/restored-landing-${width}.png`});
    }
   }
   if(path==='/activity'){
+   await page.locator('.home-work-metrics').waitFor();
    assert.equal(await page.locator('.home-work-metrics > div').count(),4,'keep verified work metrics on the activity page');
    const metricsBottom=await page.locator('.activity-health').evaluate(node=>node.getBoundingClientRect().bottom);
    assert.equal(await page.locator('.activity-refresh').evaluate((node,bottom)=>node.getBoundingClientRect().top>=bottom,metricsBottom),true,'refresh indicator belongs below the metrics');
@@ -66,6 +64,14 @@ for(const width of [1440,768,390,320]){
  }
  if(width===390)await page.screenshot({path:'../qa/bnb-migration-docs-mobile.png',fullPage:true});
 }
+assert.equal(illustrationRequests,0,'no app route should request the retired illustration endpoint');
+await page.goto(`${origin}/agents/wren`,{waitUntil:'networkidle'});
+assert.equal(await page.getByRole('heading',{name:'agent unavailable.',exact:true}).count(),1,'old static agent routes cannot show illustrative records');
+assert.equal(await page.locator('.mode-control,.receipt-modal,.chart-panel,.terminal').count(),0,'old sample credit and receipt surfaces are removed');
+await page.route('**/api/activity**',route=>route.fulfill({json:[]}));
+await page.goto(`${origin}/agents`,{waitUntil:'networkidle'});await page.getByText('No public agents have been shared yet.',{exact:false}).waitFor();assert.equal(await page.locator('.garden-count').innerText(),'0 agents · 0 runs','empty public data never grows sample agents');
+await page.goto(`${origin}/live`,{waitUntil:'networkidle'});await page.getByText('no agents have landed yet.',{exact:true}).waitFor();assert.equal(await page.locator('.readable-log-row').count(),0,'empty public feed never inserts synthetic activity');await page.getByText('No public agent activity yet.',{exact:false}).waitFor();
+await page.unroute('**/api/activity**');
 await page.route('**/api/metrics',route=>route.fulfill({status:503,json:{detail:'metrics unavailable'}}));
 await page.goto(`${origin}/activity`,{waitUntil:'networkidle'});
 await page.getByText('Metrics unavailable. Recorded values may be out of date.',{exact:true}).waitFor();

@@ -1,8 +1,10 @@
+import { useHolderGate } from "../lib/holder-access";
 import { useState } from "react";
 import { Copy } from "lucide-react";
 import type { AccountAPI } from "../lib/jobs";
 
 export function AgentAccessKey({ agentId, api, disabled = false }: { agentId: string; api: AccountAPI; disabled?: boolean }) {
+  const access = useHolderGate();
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -15,6 +17,7 @@ export function AgentAccessKey({ agentId, api, disabled = false }: { agentId: st
         setKey("");
         setFeedback("access key revoked. it can no longer run this agent.");
       } else {
+        await access.require("generate_key");
         const result = await api<{ key: string }>(`/account/runtime/${encodeURIComponent(agentId)}/key`, { method: "POST" });
         if (typeof result.key !== "string" || !result.key) throw Error("The API did not return an access key.");
         setKey(result.key);
@@ -37,7 +40,7 @@ export function AgentAccessKey({ agentId, api, disabled = false }: { agentId: st
   return <details className="builder-tools">
     <summary>connect your own agent</summary>
     <p>Generate an access key for this agent. It can run its configured tools and cannot sign wallet transactions.</p>
-    <button className="outline" disabled={disabled || busy} onClick={() => void change("generate")}>generate access key</button>{" "}
+    <button className="outline" disabled={disabled || busy || !access.allows("generate_key")} onClick={() => void change("generate")}>generate access key</button>{" "}
     <button className="outline" disabled={disabled || busy} onClick={() => void change("revoke")}>revoke access key</button>
     {feedback && <p className="field-help" role="status">{feedback}</p>}
     {error && <p className="form-error" role="alert">{error}</p>}

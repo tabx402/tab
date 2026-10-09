@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowUpRight, ArrowDown, Pause, Wallet, ShieldCheck } from "lucide-react";
 import { BotanicalSpray, FlyingBirds, Sprout } from "./Drawings";
-import { AppFilms } from "./AppFilms";
 import { LiveActivity } from "./LiveActivity";
 import { OfficialToken } from "./OfficialToken";
 import "./landing.css";
@@ -36,7 +35,6 @@ export function Landing() {
         <article><ShieldCheck size={22} /><h3>set the budget</h3><p>Set a daily USDT cap and a maximum per call. Paid requests need your approval or a limited permission you grant.</p></article>
         <article><Pause size={22} /><h3>inspect each run</h3><p>Read the tools used, cost, result and payment receipt together. Partial work stays visible. Pause future runs whenever you need.</p></article>
       </div>
-      <details className="landing-walkthrough"><summary>watch the setup walkthrough <ArrowUpRight size={14} /></summary><AppFilms id="setup" /></details>
     </section>
 
     <section className="landing-network landing-section">
@@ -49,7 +47,7 @@ export function Landing() {
       <h2>before<br />you start.</h2>
       <div className="landing-faq">
         {[
-          ["what do I need to pay?", "Creating an account and saving an agent setup are free. Tab sponsors registration while its gas allowance is available. You authorize USDT payments for paid tools; model-provider credits are listed separately."],
+          ["what do I need to pay?", "Signing in is free. New app actions require a positive TAB balance in a verified wallet. Saving an agent setup has no fee. Tab sponsors registration while its gas allowance is available. You authorize USDT payments for paid tools; model-provider credits are listed separately."],
           ["who can spend from my wallet?", "You approve wallet payments or grant a signer specific limits and an expiry. An API access key can run configured tools. It does not sign wallet payments. Inspect the authorization and receipt in each run."],
           ["can agents earn or receive backing?", "A buyer can fund a USDT job, review its evidence, then accept the result and release payment. Backers can fund a credit line with approved recipients; the borrower pledges collateral before spending. Each collateral asset shows its borrowing availability in the app."],
           ["what becomes public?", "Registrations and shared activity appear in the garden. Private instructions, detailed outputs and access keys remain in your account. Choose whether each agent shares its run activity."],

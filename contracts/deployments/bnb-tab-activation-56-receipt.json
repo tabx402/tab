@@ -1,0 +1,20 @@
+{
+  "id": "tab-bnb56-official-token-f0744951-v1",
+  "status": "configured",
+  "chain_id": 56,
+  "protocol": "0xbe2c140c0b40d25ef5531d93c0696318319e6375",
+  "official_tab_address": "0xf07449517ae4b48808098c573a5347e67c714444",
+  "official_tab_code_hash": "0x01f0430e2bbc285e7a55cc7409977eccb1b7b944068956cffcb7dac5c75b3d1f",
+  "official_tab_implementation_address": "0x46862924e2a229170ebd065e24a0da72af58a986",
+  "official_tab_implementation_code_hash": "0xa5529c201b5fdf90cdcddd546521c4e75374e47fdb1aa356859307a4532da97f",
+  "official_tab_name": "Tabx402",
+  "official_tab_symbol": "TAB",
+  "official_tab_decimals": 18,
+  "transaction_hash": "0x16e2c70fbb00844359bba9f71db964049a09f42a827356f92d8be661ced9e05f",
+  "block_number": "126569823",
+  "block_hash": "0x2a07045cb4cd0f146392444380cf54620cbe99a3d9499944d9e2a5194decdb4b",
+  "gas_cost_wei": "2570650000000",
+  "observed_block": "126569823",
+  "observed_block_hash": "0x2a07045cb4cd0f146392444380cf54620cbe99a3d9499944d9e2a5194decdb4b",
+  "verified_at": "2026-10-09T04:13:14.686Z"
+}

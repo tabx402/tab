@@ -77,66 +77,6 @@
         ],
         "type": "object"
       },
-      "AgentExample": {
-        "properties": {
-          "backer": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "limit": {
-            "format": "double",
-            "type": "number"
-          },
-          "name": {
-            "type": "string"
-          },
-          "outstanding": {
-            "format": "double",
-            "type": "number"
-          },
-          "providers": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "purpose": {
-            "type": "string"
-          },
-          "repaid": {
-            "format": "double",
-            "type": "number"
-          },
-          "repayments": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "spent": {
-            "format": "double",
-            "type": "number"
-          },
-          "status": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "purpose",
-          "limit",
-          "outstanding",
-          "spent",
-          "repaid",
-          "repayments",
-          "backer",
-          "providers",
-          "status"
-        ],
-        "type": "object"
-      },
       "AgentInput": {
         "additionalProperties": false,
         "properties": {
@@ -1035,6 +975,104 @@
         ],
         "type": "object"
       },
+      "HolderAccess": {
+        "properties": {
+          "balance_units": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "chain_id": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "checked_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "decimals": {
+            "format": "int32",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "eligible": {
+            "type": "boolean"
+          },
+          "enforced": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "minimum_units": {
+            "type": "string"
+          },
+          "recovery_allowed": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "token_address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "wallet": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "enforced",
+          "eligible",
+          "chain_id",
+          "minimum_units",
+          "message",
+          "recovery_allowed"
+        ],
+        "type": "object"
+      },
+      "HolderChallenge": {
+        "properties": {
+          "chain_id": {
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "expires_at": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "wallet": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "wallet",
+          "message",
+          "expires_at",
+          "chain_id"
+        ],
+        "type": "object"
+      },
       "Job": {
         "allOf": [
           {
@@ -1394,6 +1432,44 @@
         ],
         "type": "object"
       },
+      "JobRun": {
+        "properties": {
+          "agent_id": {
+            "type": "string"
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "job_id": {
+            "type": "string"
+          },
+          "output": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "started_at": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "job_id",
+          "agent_id",
+          "status",
+          "started_at",
+          "output"
+        ],
+        "type": "object"
+      },
       "JobSystem": {
         "properties": {
           "chain_id": {
@@ -1455,6 +1531,22 @@
         },
         "required": [
           "paused"
+        ],
+        "type": "object"
+      },
+      "ProofInput": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "signature": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "signature"
         ],
         "type": "object"
       },
@@ -1599,6 +1691,9 @@
           "gas_sponsorship_status": {
             "type": "string"
           },
+          "holder_access_enabled": {
+            "type": "boolean"
+          },
           "network": {
             "type": "string"
           },
@@ -1624,6 +1719,7 @@
           }
         },
         "required": [
+          "holder_access_enabled",
           "financial_actions_enabled",
           "contracts_status",
           "chain_id",
@@ -1637,58 +1733,6 @@
           "usdt_decimals",
           "preferred_wallet",
           "backend"
-        ],
-        "type": "object"
-      },
-      "PublicData": {
-        "properties": {
-          "agents": {
-            "items": {
-              "$ref": "#/components/schemas/AgentExample"
-            },
-            "type": "array"
-          },
-          "mode": {
-            "type": "string"
-          },
-          "receipts": {
-            "items": {
-              "$ref": "#/components/schemas/Receipt"
-            },
-            "type": "array"
-          },
-          "series": {
-            "items": {
-              "properties": {
-                "date": {
-                  "type": "string"
-                },
-                "repayment": {
-                  "type": "number"
-                },
-                "spend": {
-                  "type": "number"
-                }
-              },
-              "required": [
-                "date",
-                "spend",
-                "repayment"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "summary": {
-            "$ref": "#/components/schemas/Summary"
-          }
-        },
-        "required": [
-          "mode",
-          "summary",
-          "agents",
-          "receipts",
-          "series"
         ],
         "type": "object"
       },
@@ -1923,48 +1967,6 @@
         ],
         "type": "object"
       },
-      "Receipt": {
-        "properties": {
-          "agent": {
-            "type": "string"
-          },
-          "amount": {
-            "format": "double",
-            "type": "number"
-          },
-          "description": {
-            "type": "string"
-          },
-          "example": {
-            "type": "boolean"
-          },
-          "id": {
-            "type": "string"
-          },
-          "kind": {
-            "type": "string"
-          },
-          "provider": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "timestamp": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "timestamp",
-          "agent",
-          "kind",
-          "amount",
-          "description",
-          "example"
-        ],
-        "type": "object"
-      },
       "RegisteredAgent": {
         "properties": {
           "daily_cap": {
@@ -2187,6 +2189,18 @@
           "block_number",
           "fee_bnb"
         ],
+        "type": "object"
+      },
+      "RunInput": {
+        "additionalProperties": false,
+        "properties": {
+          "quote_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
         "type": "object"
       },
       "RuntimeAgent": {
@@ -2414,39 +2428,6 @@
         ],
         "type": "object"
       },
-      "Summary": {
-        "properties": {
-          "agents": {
-            "format": "int64",
-            "minimum": 0,
-            "type": "integer"
-          },
-          "credit_limit": {
-            "format": "double",
-            "type": "number"
-          },
-          "outstanding": {
-            "format": "double",
-            "type": "number"
-          },
-          "repaid": {
-            "format": "double",
-            "type": "number"
-          },
-          "spent": {
-            "format": "double",
-            "type": "number"
-          }
-        },
-        "required": [
-          "credit_limit",
-          "spent",
-          "repaid",
-          "outstanding",
-          "agents"
-        ],
-        "type": "object"
-      },
       "TokenMetadata": {
         "properties": {
           "address": {
@@ -2558,6 +2539,18 @@
         ],
         "type": "object"
       },
+      "WalletInput": {
+        "additionalProperties": false,
+        "properties": {
+          "wallet": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "wallet"
+        ],
+        "type": "object"
+      },
       "WalletProof": {
         "properties": {
           "signature": {
@@ -2615,6 +2608,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -2629,6 +2625,18 @@
         ]
       },
       "post": {
+        "parameters": [
+          {
+            "description": "Selected wallet; ownership and current TAB holdings are verified by the server when holder access is enabled",
+            "in": "header",
+            "name": "X-Tab-Holder-Wallet",
+            "required": false,
+            "schema": {
+              "pattern": "^0x[0-9a-fA-F]{40}$",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2652,6 +2660,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -2686,6 +2697,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -2719,6 +2733,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -2733,6 +2750,18 @@
         ]
       },
       "post": {
+        "parameters": [
+          {
+            "description": "Selected wallet; ownership and current TAB holdings are verified by the server when holder access is enabled",
+            "in": "header",
+            "name": "X-Tab-Holder-Wallet",
+            "required": false,
+            "schema": {
+              "pattern": "^0x[0-9a-fA-F]{40}$",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -2756,6 +2785,139 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
+          "422": {
+            "description": "Invalid input"
+          },
+          "503": {
+            "description": "An integration is not configured or unavailable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/account/holder-access": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "wallet",
+            "required": false,
+            "schema": {
+              "pattern": "^0x[0-9a-fA-F]{40}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HolderAccess"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Wallet ownership or TAB holding is required"
+          },
+          "422": {
+            "description": "Invalid input"
+          },
+          "503": {
+            "description": "An integration is not configured or unavailable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/account/holder-access/challenge": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WalletInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HolderChallenge"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
+          "422": {
+            "description": "Invalid input"
+          },
+          "503": {
+            "description": "An integration is not configured or unavailable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/account/holder-access/verify": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProofInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HolderAccess"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -2789,6 +2951,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -2840,6 +3005,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -2872,6 +3040,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -2916,6 +3087,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -2948,6 +3122,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -2988,6 +3165,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -3039,6 +3219,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -3078,6 +3261,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -3119,6 +3305,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -3156,6 +3345,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -3207,6 +3399,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -3247,6 +3442,98 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
+          "422": {
+            "description": "Invalid input"
+          },
+          "503": {
+            "description": "An integration is not configured or unavailable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/account/jobs/{id}/run": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRun"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
+          "422": {
+            "description": "Invalid input"
+          },
+          "503": {
+            "description": "An integration is not configured or unavailable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/account/jobs/{id}/runs": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobRun"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -3269,6 +3556,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -3300,6 +3590,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -3334,6 +3627,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -3348,6 +3644,18 @@
         ]
       },
       "post": {
+        "parameters": [
+          {
+            "description": "Selected wallet; ownership and current TAB holdings are verified by the server when holder access is enabled",
+            "in": "header",
+            "name": "X-Tab-Holder-Wallet",
+            "required": false,
+            "schema": {
+              "pattern": "^0x[0-9a-fA-F]{40}$",
+              "type": "string"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -3371,6 +3679,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -3422,6 +3733,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -3454,6 +3768,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -3498,6 +3815,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -3531,6 +3851,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -3563,6 +3886,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -3607,6 +3933,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -3639,6 +3968,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -3690,6 +4022,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -3722,6 +4057,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -3770,6 +4108,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -3821,6 +4162,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -3854,6 +4198,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -3884,6 +4231,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -3935,6 +4285,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -3974,6 +4327,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -4033,6 +4389,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -4081,6 +4440,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -4123,6 +4485,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -4174,6 +4539,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -4200,6 +4568,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunInput"
+              }
+            }
+          },
+          "required": false
+        },
         "responses": {
           "200": {
             "content": {
@@ -4213,6 +4591,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -4256,6 +4637,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -4307,6 +4691,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -4346,6 +4733,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -4389,6 +4779,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -4440,6 +4833,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -4473,6 +4869,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -4505,6 +4904,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -4557,6 +4959,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -4608,6 +5013,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -4648,6 +5056,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -4692,6 +5103,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -4724,6 +5138,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -4767,6 +5184,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -4829,6 +5249,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -4879,6 +5302,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -4919,6 +5345,98 @@
           "401": {
             "description": "Authentication required"
           },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
+          "422": {
+            "description": "Invalid input"
+          },
+          "503": {
+            "description": "An integration is not configured or unavailable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/agent/jobs/{id}/run": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRun"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
+          "422": {
+            "description": "Invalid input"
+          },
+          "503": {
+            "description": "An integration is not configured or unavailable"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/agent/jobs/{id}/runs": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/JobRun"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
+          },
           "422": {
             "description": "Invalid input"
           },
@@ -4935,6 +5453,16 @@
     },
     "/api/agent/run": {
       "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunInput"
+              }
+            }
+          },
+          "required": false
+        },
         "responses": {
           "200": {
             "content": {
@@ -4948,6 +5476,9 @@
           },
           "401": {
             "description": "Authentication required"
+          },
+          "403": {
+            "description": "The account, wallet, or current TAB holding does not authorize this action"
           },
           "422": {
             "description": "Invalid input"
@@ -5470,31 +6001,6 @@
       "get": {
         "responses": {
           "200": {
-            "description": "Successful response"
-          },
-          "401": {
-            "description": "Authentication required"
-          },
-          "422": {
-            "description": "Invalid input"
-          },
-          "503": {
-            "description": "An integration is not configured or unavailable"
-          }
-        }
-      }
-    },
-    "/api/overview": {
-      "get": {
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PublicData"
-                }
-              }
-            },
             "description": "Successful response"
           },
           "401": {

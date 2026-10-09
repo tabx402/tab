@@ -53,7 +53,7 @@ fn signing_agent(
 ) -> Result<RuntimeAgent> {
     let (actual, agent) = Store::agent_any(db, id)?;
     if owner.is_some_and(|expected| expected != actual)
-        || (owner.is_none() && !agent.plan.public_activity)
+        || (owner.is_none() && (!agent.plan.public_activity || Store::publicly_excluded(db, id)?))
     {
         return Err(ApiError::missing("Agent not found."));
     }
@@ -68,7 +68,7 @@ fn signing_agent(
 fn draft_agent(db: &Connection, id: &str, owner: Option<&str>) -> Result<RuntimeAgent> {
     let (actual, agent) = Store::agent_any(db, id)?;
     if owner.is_some_and(|expected| expected != actual)
-        || (owner.is_none() && !agent.plan.public_activity)
+        || (owner.is_none() && (!agent.plan.public_activity || Store::publicly_excluded(db, id)?))
     {
         return Err(ApiError::missing("Agent not found."));
     }
@@ -409,7 +409,7 @@ impl AppState {
     }
     pub fn public_jobs(&self) -> Result<Vec<PublicJob>> {
         let db = self.store.connect()?;
-        let jobs:Vec<Job>=Store::list_payload(&db,"SELECT j.payload FROM jobs j WHERE NOT EXISTS(SELECT 1 FROM jobs p LEFT JOIN runtime_agents a ON a.id=json_extract(p.payload,'$.requester_id') LEFT JOIN runtime_agents b ON b.id=json_extract(p.payload,'$.executor_id') WHERE p.root_id=j.root_id AND (coalesce(json_extract(p.payload,'$.public_activity'),0)!=1 OR coalesce(json_extract(a.payload,'$.public_activity'),0)!=1 OR coalesce(json_extract(b.payload,'$.public_activity'),0)!=1)) ORDER BY j.created_at DESC LIMIT 500",[])?;
+        let jobs:Vec<Job>=Store::list_payload(&db,"SELECT j.payload FROM jobs j WHERE NOT EXISTS(SELECT 1 FROM jobs p LEFT JOIN runtime_agents a ON a.id=json_extract(p.payload,'$.requester_id') LEFT JOIN runtime_agents b ON b.id=json_extract(p.payload,'$.executor_id') WHERE p.root_id=j.root_id AND (coalesce(json_extract(p.payload,'$.public_activity'),0)!=1 OR coalesce(json_extract(a.payload,'$.public_activity'),0)!=1 OR coalesce(json_extract(b.payload,'$.public_activity'),0)!=1 OR EXISTS(SELECT 1 FROM unlisted_public_agents x WHERE x.agent_id=a.id OR x.agent_id=b.id))) ORDER BY j.created_at DESC LIMIT 500",[])?;
         Ok(jobs
             .into_iter()
             .map(|j| PublicJob {
@@ -473,6 +473,24 @@ impl AppState {
         self.attach_evidence(owner,id,json!({"chain_id":56,"network":"mainnet","block_number":number,"block_hash":hash,"observed_at":now(),"verification":"buyer_review"}))
     }
     pub fn attach_evidence(&self, owner: &str, id: &str, evidence: Value) -> Result<Job> {
+        self.attach_evidence_checked(owner, id, evidence, None)
+    }
+    pub(crate) fn attach_job_run_evidence(
+        &self,
+        owner: &str,
+        id: &str,
+        terms_hash: &str,
+        evidence: Value,
+    ) -> Result<Job> {
+        self.attach_evidence_checked(owner, id, evidence, Some(terms_hash))
+    }
+    fn attach_evidence_checked(
+        &self,
+        owner: &str,
+        id: &str,
+        evidence: Value,
+        expected_terms: Option<&str>,
+    ) -> Result<Job> {
         if !evidence.is_object()
             || evidence.as_object().is_none_or(|o| o.is_empty())
             || serde_json::to_vec(&evidence)?.len() > 16000
@@ -485,7 +503,18 @@ impl AppState {
         let tx = db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         let mut job = Store::job(&tx, id)?;
         access(&tx, owner, &job)?;
-        draft_agent(&tx, &job.plan.executor_id, Some(owner))?;
+        let executor = draft_agent(&tx, &job.plan.executor_id, Some(owner))?;
+        if expected_terms.is_some_and(|terms| {
+            terms != job.terms_hash
+                || job.funding != "funded"
+                || job.state != "open"
+                || job.paused
+                || executor.status != "ready"
+        }) {
+            return Err(ApiError::conflict(
+                "Job terms or execution eligibility changed. The run output remains available without attached evidence.",
+            ));
+        }
         if !["draft", "open"].contains(&job.state.as_str()) || job.plan.deadline <= Utc::now() {
             return Err(ApiError::conflict("This job is expired or closed."));
         }
@@ -506,7 +535,7 @@ impl AppState {
         let tx = db.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         let mut job = Store::job(&tx, id)?;
         access(&tx, owner, &job)?;
-        let children:u64=tx.query_row("SELECT count(*) FROM jobs WHERE parent_id=? AND json_extract(payload,'$.state') NOT IN ('cancelled','accepted')",[id],|r|r.get(0))?;
+        let children:u64=tx.query_row("SELECT count(*) FROM jobs WHERE parent_id=? AND json_extract(payload,'$.state') NOT IN ('cancelled','closed')",[id],|r|r.get(0))?;
         if job.funding != "unfunded" || job.state != "draft" || children > 0 {
             return Err(ApiError::conflict(
                 "Close child branches first; funded jobs need a wallet cancellation.",
@@ -638,6 +667,11 @@ impl AppState {
             let actor_id =
                 if root_cleanup || ["accept", "reject", "pause", "resume"].contains(&action) {
                     &root_buyer_id
+                } else if action == "cancel"
+                    && Utc::now() <= job.plan.deadline + Duration::seconds(86400)
+                    && owns(&db, owner, &job.plan.executor_id)?
+                {
+                    &job.plan.executor_id
                 } else if [
                     "fund",
                     "delegate",
@@ -914,7 +948,8 @@ impl AppState {
                 0 => "draft",
                 1 => "open",
                 2 => "submitted",
-                3 | 5 => "accepted",
+                3 => "accepted",
+                5 => "closed",
                 4 => "cancelled",
                 _ => return Err(ApiError::unavailable("Invalid onchain job state.")),
             }

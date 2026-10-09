@@ -1,0 +1,26 @@
+{
+  "id": "tab-bnb56-official-token-f0744951-v1",
+  "chain_id": 56,
+  "from": "0x00e128e7779ea927a087b40ade268dedc1b34a90",
+  "to": "0xbe2c140c0b40d25ef5531d93c0696318319e6375",
+  "token": {
+    "official_tab_address": "0xf07449517ae4b48808098c573a5347e67c714444",
+    "official_tab_code_hash": "0x01f0430e2bbc285e7a55cc7409977eccb1b7b944068956cffcb7dac5c75b3d1f",
+    "official_tab_implementation_address": "0x46862924e2a229170ebd065e24a0da72af58a986",
+    "official_tab_implementation_code_hash": "0xa5529c201b5fdf90cdcddd546521c4e75374e47fdb1aa356859307a4532da97f",
+    "official_tab_name": "Tabx402",
+    "official_tab_symbol": "TAB",
+    "official_tab_decimals": 18
+  },
+  "core_hash": "0x948a94c0b3639eaef4d0d5069db5317e557d2ea2846a260b3075a67be928d87a",
+  "nonce": 19,
+  "gas": "100000",
+  "gas_price_wei": "50000000",
+  "value": "0",
+  "data": "0x59a786aa000000000000000000000000f07449517ae4b48808098c573a5347e67c714444",
+  "maximum_gas_wei": "200000000000000",
+  "observed_block": "126569403",
+  "created_at": "2026-10-09T04:10:00.916Z",
+  "irreversible": true,
+  "scope": "Configure the existing official TAB token once. No funds, approvals, swaps or deployments."
+}

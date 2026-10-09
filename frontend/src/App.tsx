@@ -1,7 +1,6 @@
 import { ProtocolGuide } from "./components/ProtocolGuide";
 import {
   useEffect,
-  useRef,
   useState,
   createContext,
   useContext,
@@ -18,32 +17,17 @@ import {
   useParams,
   useLocation,
 } from "react-router-dom";
-import {
-  ArrowUpRight,
-  ArrowRight,
-  Plus,
-  Search,
-  ShieldCheck,
-  ChevronRight,
-  X,
-  Check,
-  ExternalLink,
-  Copy,
-  UserRound,
-} from "lucide-react";
-import { request, money } from "./lib/api";
+import { ArrowUpRight, ArrowRight, UserRound } from "lucide-react";
+import { request } from "./lib/api";
 import { ChainContext, BNB_CHAIN_ID, USDT_ADDRESS } from "./lib/evm";
-import type { BackingAsset, Config, PublicData, Provider, Receipt } from "./lib/api";
-import { Bird, BirdPair, Sprout, AgentGlyph } from "./components/Drawings";
-import { Chart } from "./components/Chart";
-import { AgentsTable } from "./components/Agents";
+import type { Config, Provider } from "./lib/api";
+import { Bird, Sprout } from "./components/Drawings";
 import { LiveAgents, LiveAgentProfile } from "./components/LiveAgents";
 import { LiveActivity } from "./components/LiveActivity";
 import { WorkRecord } from "./components/WorkRecord";
 import { Flock } from "./components/Flock";
 import { Garden } from "./components/Garden";
 import type { GardenFocus } from "./components/Garden";
-import { Ledger } from "./components/Ledger";
 import { Registry } from "./components/Registry";
 import { RouteReveal } from "./components/RouteReveal";
 import { Landing } from "./components/Landing";
@@ -55,12 +39,8 @@ import { PublicJobs, Operators, PublicRunReceipt } from "./components/PublicWork
 import "./components/action-colors.css";
 const Account = lazy(() => import("./components/Account"));
 const Context = createContext<{
-  data: PublicData;
   providers: Provider[];
-  mode: "example" | "public";
-  setMode: (m: "example" | "public") => void;
   config: Config;
-  onReceipt: (r: Receipt) => void;
 } | null>(null);
 function useData() {
   const ctx = useContext(Context);
@@ -70,13 +50,6 @@ function useData() {
 export function useConfig() {
   return useData().config;
 }
-const empty: PublicData = {
-  mode: "public",
-  summary: { credit_limit: 0, spent: 0, repaid: 0, outstanding: 0, agents: 0 },
-  agents: [],
-  receipts: [],
-  series: [],
-};
 function Header() {
   return (
     <header>
@@ -115,27 +88,6 @@ function Header() {
     </header>
   );
 }
-function ModeControl() {
-  const { mode, setMode } = useData();
-  return (
-    <div className="mode-control">
-      <button
-        onClick={() => setMode(mode === "example" ? "public" : "example")}
-        className="mode-toggle"
-        aria-label={`Switch to ${mode === "example" ? "public" : "example"} data`}
-      >
-        <span className={mode === "example" ? "active" : ""}>example</span>
-        <span className={mode === "public" ? "active" : ""}>public</span>
-      </button>
-      <span className="mode-note">
-        <i />
-        {mode === "example"
-          ? "explore an example garden"
-          : "public agents and work"}
-      </span>
-    </div>
-  );
-}
 function PageIntro({
   title,
   description,
@@ -153,75 +105,6 @@ function PageIntro({
       </div>
       {children}
     </section>
-  );
-}
-function Metrics() {
-  const { data } = useData();
-  const s = data.summary;
-  return (
-    <div className="metrics">
-      {[
-        ["backed credit", s.credit_limit, "backer-set limits"],
-        ["provider spend", s.spent, "inference + data"],
-        ["repaid", s.repaid, "principal returned"],
-        ["outstanding", s.outstanding, `${s.agents} backed agents`],
-      ].map(([name, value, detail], i) => (
-        <div className="metric" key={String(name)}>
-          <span>{name}</span>
-          <div className={i === 2 ? "mint" : ""}>
-            {money(Number(value))}
-            <small>USDT</small>
-          </div>
-          <small>
-            <i className={i === 2 ? "mint-dot" : "blue-dot"} />
-            {detail}
-          </small>
-        </div>
-      ))}
-    </div>
-  );
-}
-function CreditLoop() {
-  return (
-    <aside className="panel loop-panel">
-      <span className="eyebrow">how credit works</span>
-      <h2>
-        set a limit.
-        <br />
-        review the spending.
-      </h2>
-      <div className="flow-list">
-        {[
-          ["01", "a backer sets the limit", "USDT committed to one agent."],
-          [
-            "02",
-            "the agent uses a provider",
-            "Only the services on its allowlist.",
-          ],
-          [
-            "03",
-            "a receipt records the spend",
-            "Provider, amount, and settlement.",
-          ],
-          [
-            "04",
-            "repayment builds the record",
-            "The backer reviews the next limit.",
-          ],
-        ].map(([n, t, d]) => (
-          <div key={n}>
-            <span className="flow-number">{n}</span>
-            <div>
-              <strong>{t}</strong>
-              <p>{d}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-      <Link to="/protocol" className="text-link">
-        read the mechanics <ArrowUpRight size={14} />
-      </Link>
-    </aside>
   );
 }
 function Overview() {
@@ -301,90 +184,7 @@ function AgentProfile() {
   return id && /^[a-f0-9]{32}$/.test(id) ? (
     <LiveAgentProfile />
   ) : (
-    <AgentDetail />
-  );
-}
-function AgentDetail() {
-  const { id } = useParams();
-  const { data, providers, onReceipt } = useData();
-  const agent = data.agents.find((a) => a.id === id);
-  if (!agent)
-    return (
-      <PageIntro
-        title="agent unavailable."
-        description="This agent belongs to the example network. Switch to example data to view its record."
-      >
-        <ModeControl />
-      </PageIntro>
-    );
-  return (
-    <>
-      <Link className="back-link" to="/agents">
-        ← all agents
-      </Link>
-      <PageIntro
-        title={agent.name}
-        description={agent.purpose}
-      >
-        <span className="status-chip">{agent.status}</span>
-      </PageIntro>
-      <div className="detail-grid">
-        <section className="panel">
-          <AgentGlyph index={data.agents.indexOf(agent)} />
-          <h2>credit line</h2>
-          <div className="big-number">
-            {money(agent.limit)} <small>USDT</small>
-          </div>
-          <div className="mini-bar">
-            <i
-              style={{ width: `${(agent.outstanding / agent.limit) * 100}%` }}
-            />
-          </div>
-          <div className="detail-pairs">
-            <p>
-              outstanding <strong>{money(agent.outstanding)} USDT</strong>
-            </p>
-            <p>
-              available{" "}
-              <strong>{money(agent.limit - agent.outstanding)} USDT</strong>
-            </p>
-            <p>
-              backer <strong>{agent.backer}</strong>
-            </p>
-            <p>
-              repaid{" "}
-              <strong className="mint">{money(agent.repaid)} USDT</strong>
-            </p>
-          </div>
-        </section>
-        <section className="panel">
-          <span className="eyebrow">spend policy · example</span>
-          <h2>where this agent can spend</h2>
-          {agent.providers.map((id) => {
-            const p = providers.find((p) => p.id === id);
-            return (
-              <div className="policy-row" key={id}>
-                <Check size={16} />
-                <span>{p?.name ?? id}</span>
-                <small>{p?.category}</small>
-              </div>
-            );
-          })}
-          <p className="muted">
-            A real credit line requires backer consent, a funded limit, and
-            approved settlement addresses. This profile illustrates the record.
-          </p>
-          <Link className="text-link" to="/backing">
-            review backing mechanics <ArrowUpRight size={14} />
-          </Link>
-        </section>
-      </div>
-      <Ledger
-        receipts={data.receipts.filter((r) => r.agent === id)}
-        full
-        onReceipt={onReceipt}
-      />
-    </>
+    <PageIntro title="agent unavailable." description="This agent is not in the public registry."><Link className="text-link" to="/agents">open the garden <ArrowUpRight size={14} /></Link></PageIntro>
   );
 }
 function Backing() { return <BackingOverview />; }
@@ -410,115 +210,6 @@ function Scroll() {
     window.scrollTo(0, 0);
   }, [pathname]);
   return null;
-}
-function ReceiptModal({
-  receipt,
-  onClose,
-}: {
-  receipt: Receipt;
-  onClose: () => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const [closing, setClosing] = useState(false);
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const requestClose = () => {
-    if (closeTimer.current) return;
-    setClosing(true);
-    const reduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    closeTimer.current = setTimeout(onClose, reduced ? 0 : 340);
-  };
-  useEffect(
-    () => () => {
-      if (closeTimer.current) clearTimeout(closeTimer.current);
-    },
-    [],
-  );
-  const dialogRef = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const handle = (e: KeyboardEvent) => {
-      if (e.key === "Escape") requestClose();
-      if (e.key === "Tab") {
-        const buttons =
-          dialogRef.current?.querySelectorAll<HTMLButtonElement>("button");
-        if (!buttons?.length) return;
-        const first = buttons[0],
-          last = buttons[buttons.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-    document.addEventListener("keydown", handle);
-    return () => document.removeEventListener("keydown", handle);
-  }, [onClose]);
-  return (
-    <div
-      className={`modal-backdrop${closing ? " is-closing" : ""}`}
-      onClick={requestClose}
-    >
-      <section
-        className="receipt-modal"
-        ref={dialogRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="receipt-title"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          autoFocus
-          className="modal-close icon-button"
-          aria-label="Close receipt"
-          onClick={requestClose}
-        >
-          <X size={20} />
-        </button>
-        <span className="eyebrow">example receipt / {receipt.id}</span>
-        <h2 id="receipt-title">
-          {receipt.kind === "spend"
-            ? "provider payment"
-            : receipt.kind === "repayment"
-              ? "repayment"
-              : "credit limit"}
-        </h2>
-        <div className="receipt-amount">
-          {money(receipt.amount)} <small>USDT</small>
-        </div>
-        <div className="detail-pairs">
-          {[
-            ["agent", receipt.agent],
-            ["event", receipt.kind],
-            ["provider", receipt.provider ?? "n/a"],
-            ["timestamp", new Date(receipt.timestamp).toUTCString()],
-            ["description", receipt.description],
-            ["settlement", "illustrative · no transaction"],
-          ].map(([k, v]) => (
-            <p key={k}>
-              {k}
-              <strong>{v}</strong>
-            </p>
-          ))}
-        </div>
-        <button
-          className="outline"
-          onClick={async () => {
-            await navigator.clipboard.writeText(
-              JSON.stringify(receipt, null, 2),
-            );
-            setCopied(true);
-          }}
-        >
-          <Copy size={14} />
-          {copied ? "copied" : "copy receipt JSON"}
-        </button>
-      </section>
-    </div>
-  );
 }
 function Footer() {
   const { pathname } = useLocation();
@@ -548,12 +239,11 @@ function Footer() {
   );
 }
 export default function App() {
-  const [mode, setMode] = useState<"example" | "public">("public");
-  const [data, setData] = useState<PublicData>(empty);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [config, setConfig] = useState<Config>({
     app_id: null,
     financial_actions_enabled: false,
+    holder_access_enabled: false,
     contracts_status: "not_deployed",
     chain_id: BNB_CHAIN_ID,
     network: "mainnet",
@@ -569,19 +259,16 @@ export default function App() {
     official_tab_address: null,
   });
   const [error, setError] = useState("");
-  const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     let active = true;
     setLoading(true);
     Promise.all([
-      request<PublicData>(`/overview?mode=${mode}`),
       request<Provider[]>("/providers"),
       request<Config>("/config"),
     ])
-      .then(([d, p, c]) => {
+      .then(([p, c]) => {
         if (active) {
-          setData(d);
           setProviders(p);
           setConfig(c);
           setError("");
@@ -589,7 +276,6 @@ export default function App() {
       })
       .catch((e) => {
         if (active) {
-          setData(empty);
           setError(e.message);
         }
       })
@@ -599,17 +285,13 @@ export default function App() {
     return () => {
       active = false;
     };
-  }, [mode]);
+  }, []);
   return (
     <ChainContext value={config.chain_id}><BrowserRouter>
       <Context
         value={{
-          data,
           providers,
-          mode,
-          setMode,
           config,
-          onReceipt: setReceipt,
         }}
       >
         <div className="ambient-background" aria-hidden="true"><i /><i /><i /></div>
@@ -673,9 +355,6 @@ export default function App() {
           </RouteReveal>
         </main>
         <Footer />
-        {receipt && (
-          <ReceiptModal receipt={receipt} onClose={() => setReceipt(null)} />
-        )}
       </Context>
     </BrowserRouter></ChainContext>
   );

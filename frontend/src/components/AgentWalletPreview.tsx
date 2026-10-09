@@ -40,7 +40,7 @@ export function AgentWalletPreview({ address }: { address?: string | null }) {
 
   if (!address || !isAddress(address, { strict: false })) return null;
   return <div className="paid-tool agent-wallet-preview" data-testid="agent-wallet-preview">
-    <button type="button" className="text-link" disabled={pending} onClick={() => void refresh()}>{pending ? "reading balances…" : "preview wallet balances"}</button>
+    <button type="button" className="text-link" disabled={pending} onClick={() => void refresh()}>{pending ? "reading balances…" : "read wallet balances"}</button>
     {snapshot && <div aria-live="polite"><p>{formatAmount(snapshot.bnb)} BNB · {formatAmount(snapshot.usdt)} USDT</p><small className="field-help">BNB mainnet · block {BigInt(snapshot.block).toLocaleString("en-US")} · {new Date(snapshot.observed_at).toLocaleTimeString()} · no funds spent</small></div>}
     {error && <p className="form-error" role="alert">{error}</p>}
   </div>;

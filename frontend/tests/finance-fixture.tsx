@@ -1,3 +1,4 @@
+import { FixtureHolderAccess } from "./holder-access-fixture-policy";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import "@fontsource/dm-sans/400.css";
@@ -17,4 +18,4 @@ const send = async () => {
 (window as Window & { checkFinancePayload?: (intent: WalletActionIntent, data: FinanceData, expected?: FinanceInput) => string }).checkFinancePayload = (intent, data, expected) => {
   try { validateFinanceIntent(intent, agent, data, expected); return "accepted"; } catch (reason) { return (reason as Error).message; }
 };
-createRoot(document.getElementById("root")!).render(<BrowserRouter><main><section className="panel"><p>local finance QA · no real funds or transactions</p><AgentFinance agent={agent} api={request} send={send} changed={async () => {}} /></section></main></BrowserRouter>);
+createRoot(document.getElementById("root")!).render(<FixtureHolderAccess><BrowserRouter><main><section className="panel"><p>local finance QA · no real funds or transactions</p><AgentFinance agent={agent} api={request} send={send} changed={async () => {}} /></section></main></BrowserRouter></FixtureHolderAccess>);

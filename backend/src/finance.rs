@@ -699,6 +699,14 @@ pub struct FinanceModule {
     pub tokens_burned: Option<String>,
     pub burn_method: Option<String>,
     pub token_decimals: Option<u8>,
+    pub secured: Option<bool>,
+    pub collateral_symbol: Option<String>,
+    pub collateral_oracle: Option<String>,
+    pub collateral_price_usdt: Option<String>,
+    pub collateral_oracle_status: Option<String>,
+    pub ltv_bps: Option<u16>,
+    pub liquidation_bps: Option<u16>,
+    pub liquidation_bonus_bps: Option<u16>,
 }
 #[derive(Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct FinanceModules {
@@ -775,6 +783,14 @@ struct ModuleConfig {
     router_pins: CodePins,
     official_token_pins: CodePins,
     route: Vec<String>,
+    collateral_oracle: Option<String>,
+    collateral_oracle_code_hash: Option<String>,
+    collateral_oracle_pins: CodePins,
+    collateral_feed: Option<String>,
+    collateral_feed_code_hash: Option<String>,
+    collateral_feed_pins: CodePins,
+    collateral_feed_decimals: Option<u8>,
+    collateral_max_age: Option<u32>,
 }
 #[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -833,12 +849,21 @@ fn pending(reason: &str, status: &str, address: Option<String>) -> FinanceModule
         tokens_burned: None,
         burn_method: None,
         token_decimals: None,
+        secured: None,
+        collateral_symbol: None,
+        collateral_oracle: None,
+        collateral_price_usdt: None,
+        collateral_oracle_status: None,
+        ltv_bps: None,
+        liquidation_bps: None,
+        liquidation_bonus_bps: None,
     }
 }
 fn module_for_action(action: &str) -> Result<&'static str> {
     match action {
         "pool_deposit" | "pool_redeem" | "advance_request" | "advance_approve"
-        | "advance_accept" | "advance_spend" | "advance_repay" | "advance_close" => Ok("lending"),
+        | "advance_accept" | "advance_spend" | "advance_repay" | "advance_close"
+        | "advance_pledge" | "advance_withdraw_collateral" | "advance_liquidate" => Ok("lending"),
         "stock_deposit"
         | "stock_redeem"
         | "stock_borrow"
@@ -857,6 +882,9 @@ fn recovery(action: &str) -> bool {
             | "stock_redeem"
             | "advance_repay"
             | "advance_close"
+            | "advance_pledge"
+            | "advance_withdraw_collateral"
+            | "advance_liquidate"
             | "stock_add_collateral"
             | "stock_withdraw"
             | "stock_repay"
@@ -1244,6 +1272,47 @@ impl AppState {
         }
         Ok(())
     }
+    async fn finance_uint_call(&self, address: &str, signature: &str) -> Result<u128> {
+        let data = format!("0x{}", &bnb::hash(signature.as_bytes())[2..10]);
+        let raw = self.bnb.rpc("eth_call", json!([{"to":bnb::address(address)?,"data":data},"latest"])).await?;
+        let word = raw.as_str().and_then(|value| value.strip_prefix("0x"))
+            .filter(|value| value.len() == 64)
+            .ok_or_else(|| ApiError::unavailable("Invalid collateral policy response."))?;
+        u128::from_str_radix(word, 16).map_err(|_| ApiError::unavailable("Unsupported collateral policy value."))
+    }
+    async fn finance_lending_collateral(&self, module: &VerifiedModule) -> Result<()> {
+        const WBNB: &str = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
+        let cfg = &module.config;
+        let oracle = bnb::address(required(&cfg.collateral_oracle, "Pin the native BNB collateral oracle." )?)?;
+        self.finance_identity(&oracle, required(&cfg.collateral_oracle_code_hash, "Pin the collateral oracle runtime." )?, &cfg.collateral_oracle_pins, false).await?;
+        if self.finance_view(module, "collateralOracle", vec![]).await? != oracle
+            || self.finance_view(module, "WBNB", vec![]).await? != WBNB
+            || bnb::number(&self.finance_view(module, "securedCreditVersion", vec![]).await?)? != 1
+            || bnb::number(&self.finance_view(module, "LTV_BPS", vec![]).await?)? != 5000
+            || bnb::number(&self.finance_view(module, "LIQUIDATION_BPS", vec![]).await?)? != 7500
+            || bnb::number(&self.finance_view(module, "LIQUIDATION_BONUS_BPS", vec![]).await?)? != 500
+            || self.finance_address_call(&oracle, "token()").await? != WBNB
+            || self.finance_address_call(&oracle, "quoteToken()").await? != bnb::USDT
+        {
+            return Err(ApiError::unavailable("The pool's secured BNB credit policy differs from the reviewed deployment."));
+        }
+        for (feed, hash, pins, decimals, age, feed_method, age_method, ceiling) in [
+            (&cfg.collateral_feed, &cfg.collateral_feed_code_hash, &cfg.collateral_feed_pins, cfg.collateral_feed_decimals, cfg.collateral_max_age, "collateralFeed()", "collateralMaxAge()", 172800u32),
+            (&cfg.usdt_feed, &cfg.usdt_feed_code_hash, &cfg.usdt_feed_pins, cfg.usdt_feed_decimals, cfg.usdt_max_age, "quoteFeed()", "quoteMaxAge()", 3600u32),
+        ] {
+            let feed = bnb::address(required(feed, "Pin both BNB and USDT price feeds." )?)?;
+            let decimals = decimals.filter(|value| *value <= 18).ok_or_else(|| ApiError::unavailable("Pin the price-feed decimal precision."))?;
+            let age = age.filter(|value| *value > 0 && *value <= ceiling).ok_or_else(|| ApiError::unavailable("Pin the price-feed freshness policy."))?;
+            self.finance_identity(&feed, required(hash, "Pin both price-feed runtime hashes." )?, pins, true).await?;
+            if self.finance_address_call(&oracle, feed_method).await? != feed
+                || self.finance_uint_call(&oracle, age_method).await? != u128::from(age)
+                || self.bnb.token_decimals(&feed).await? != decimals
+            {
+                return Err(ApiError::unavailable("The BNB collateral oracle feed or freshness policy changed."));
+            }
+        }
+        Ok(())
+    }
     async fn finance_historical_asset(&self, module: &VerifiedModule, loan: &Value) -> Result<()> {
         let terms = &loan["terms"];
         let asset = module
@@ -1345,6 +1414,9 @@ impl AppState {
             return Err(ApiError::unavailable(
                 "Finance authority or asset differs from the verified protocol.",
             ));
+        }
+        if key == "lending" {
+            self.finance_lending_collateral(&module).await?;
         }
         if key == "buyback" {
             let token = self.config.official_tab.as_deref().ok_or_else(|| {
@@ -1500,6 +1572,17 @@ impl AppState {
                 row.total_assets_usdt = Some(money(bnb::number(&p["assets"])?).to_string());
                 row.outstanding_usdt = Some(money(bnb::number(&p["outstanding"])?).to_string());
                 row.total_shares = Some(money(bnb::number(&p["shares"])?).to_string());
+                if key == "lending" {
+                    row.secured = Some(true);
+                    row.collateral_symbol = Some("BNB".into());
+                    row.collateral_oracle = module.config.collateral_oracle.clone();
+                    row.ltv_bps = Some(5000);
+                    row.liquidation_bps = Some(7500);
+                    row.liquidation_bonus_bps = Some(500);
+                    let quote = self.finance_view(&module, "collateralQuote", vec![bnb::uint(1_000_000_000_000_000_000)]).await.ok();
+                    row.collateral_price_usdt = quote.as_ref().and_then(|q| bnb::number(&q[0]).ok()).map(|value| money(value).to_string());
+                    row.collateral_oracle_status = Some(if row.collateral_price_usdt.is_some() { "verified" } else { "unavailable" }.into());
+                }
                 if key == "stock_loans" {
                     if module.config.assets.len() > 16 {
                         return Err(ApiError::unavailable(
@@ -1602,6 +1685,16 @@ impl AppState {
             .finance_module(module_for_action(&input.action)?)
             .await?;
         match input.action.as_str() {
+            "advance_pledge" => {
+                let amount = positive(input.collateral_amount.ok_or_else(|| ApiError::validation("Set the exact BNB collateral amount."))?, 18)?;
+                let q = self.finance_view(&module, "collateralQuote", vec![bnb::uint(amount)]).await?;
+                Ok(json!({"status":"verified","action":input.action,"chain_id":56,"currency":"USDT","collateral_symbol":"BNB","decimals":18,"collateral_value_usdt":money(bnb::number(&q[0])?).to_string(),"maximum_borrow_usdt":money(bnb::number(&q[1])?).to_string(),"liquidation_debt_usdt":money(bnb::number(&q[2])?).to_string()}))
+            }
+            "advance_liquidate" => {
+                let id = required(&input.loan_id, "Choose the exact advance.")?;
+                let q = self.finance_view(&module, "liquidationQuote", vec![nonzero_hash(id)?, bnb::uint(positive(input.amount, 18)?)]).await?;
+                Ok(json!({"status":"verified","action":input.action,"chain_id":56,"currency":"USDT","collateral_symbol":"BNB","decimals":18,"maximum_repay_usdt":money(bnb::number(&q[0])?).to_string(),"collateral_out":decimal_units(bnb::number(&q[1])?,18)}))
+            }
             "stock_borrow" => {
                 let token = required(&input.token_address, "Choose collateral.")?;
                 let (asset, _) = self.finance_asset(&module, token).await?;
@@ -2107,7 +2200,8 @@ impl AppState {
                     ])],
                 )?
             }
-            "advance_accept" | "advance_spend" | "advance_repay" | "advance_close" => {
+            "advance_accept" | "advance_spend" | "advance_repay" | "advance_close"
+            | "advance_pledge" | "advance_withdraw_collateral" | "advance_liquidate" => {
                 let loan_id = bnb::id(required(
                     &input.loan_id,
                     "Choose the exact working-capital line.",
@@ -2122,12 +2216,14 @@ impl AppState {
                 let borrower = loan["borrower"] == wallet && loan["agent"] == agent_key;
                 if !borrower
                     && !(input.action == "advance_close" && module.summary["underwriter"] == wallet)
+                    && input.action != "advance_liquidate"
                 {
                     return Err(ApiError::forbidden(
                         "This working-capital line belongs to another registered agent.",
                     ));
                 }
                 let mut args = vec![bnb::bytes32(&loan_id)?];
+                let mut native_value = 0;
                 let method = match input.action.as_str() {
                     "advance_accept" => {
                         if loan["accepted"] == true || loan["closed"] == true {
@@ -2138,6 +2234,42 @@ impl AppState {
                         "acceptLoan"
                     }
                     "advance_close" => "closeLoan",
+                    "advance_pledge" => {
+                        let amount = positive(input.collateral_amount.ok_or_else(|| ApiError::validation("Set the exact BNB pledge."))?, 18)?;
+                        native_value = amount;
+                        extra["collateral_symbol"] = json!("BNB");
+                        "pledgeCollateral"
+                    },
+                    "advance_withdraw_collateral" => {
+                        let amount = positive(input.collateral_amount.ok_or_else(|| ApiError::validation("Set the exact BNB withdrawal."))?, 18)?;
+                        let collateral = bnb::number(&self.finance_view(&module, "collateral", vec![bnb::bytes32(&loan_id)?]).await?)?;
+                        if amount > collateral {
+                            return Err(ApiError::validation("The BNB withdrawal exceeds this advance's collateral."));
+                        }
+                        if bnb::number(&loan["debt"])? > 0 {
+                            let q = self.finance_view(&module, "collateralQuote", vec![bnb::uint(collateral-amount)]).await?;
+                            if module.summary["paused"] == true || bnb::number(&loan["debt"])? > bnb::number(&q[1])? {
+                                return Err(ApiError::validation("Repay principal or leave enough BNB collateral before withdrawing."));
+                            }
+                        }
+                        args.push(bnb::uint(amount));
+                        extra["collateral_symbol"] = json!("BNB");
+                        "withdrawCollateral"
+                    },
+                    "advance_liquidate" => {
+                        let amount = positive(input.amount, 18)?;
+                        let q = self.finance_view(&module, "liquidationQuote", vec![bnb::bytes32(&loan_id)?, bnb::uint(amount)]).await?;
+                        let actual = bnb::number(&q[0])?;
+                        let minimum = positive(input.minimum_out.ok_or_else(|| ApiError::validation("Set the exact minimum BNB return."))?, 18)?;
+                        if actual == 0 || minimum != bnb::number(&q[1])? {
+                            return Err(ApiError::validation("Keep the minimum BNB return at the fresh liquidation quote."));
+                        }
+                        approval = Some((bnb::USDT.into(), actual));
+                        args.extend([bnb::uint(amount), bnb::uint(minimum)]);
+                        extra["collateral_symbol"] = json!("BNB");
+                        extra["liquidation_repay_usdt"] = json!(money(actual).to_string());
+                        "liquidateLoan"
+                    },
                     "advance_repay" => {
                         let amount = positive(input.amount, 18)?;
                         if amount > bnb::number(&loan["debt"])? {
@@ -2151,6 +2283,13 @@ impl AppState {
                     }
                     _ => {
                         let amount = positive(input.amount, 18)?;
+                        let health = self.finance_view(&module, "loanHealth", vec![bnb::bytes32(&loan_id)?]).await?;
+                        if loan["accepted"] != true || loan["closed"] == true || module.summary["paused"] == true
+                            || bnb::number(&loan["expiresAt"])? <= Utc::now().timestamp() as u128
+                            || bnb::number(&loan["debt"])?.checked_add(amount).is_none_or(|debt| debt > bnb::number(&health[1]).unwrap_or(0))
+                        {
+                            return Err(ApiError::validation("Accept the advance and pledge enough BNB collateral before spending."));
+                        }
                         let recipient = bnb::address(required(
                             &input.recipient,
                             "Choose an approved merchant recipient.",
@@ -2189,7 +2328,9 @@ impl AppState {
                         "spendLoan"
                     }
                 };
-                instruction(&module, method, args)?
+                let mut ix = instruction(&module, method, args)?;
+                ix.value = format!("0x{native_value:x}");
+                ix
             }
             "stock_borrow" => {
                 if module.summary["paused"] == true {
@@ -2593,11 +2734,16 @@ impl AppState {
                     && loan["closed"] != true
                     && expires > Utc::now().timestamp() as u128;
                 let tools = bnb::number(&loan["tools"])?;
+                let collateral = bnb::number(&self.finance_view(module, "collateral", vec![bnb::bytes32(id)?]).await?)?;
+                let health = self.finance_view(module, "loanHealth", vec![bnb::bytes32(id)?]).await.ok();
+                let maximum = health.as_ref().and_then(|h| bnb::number(&h[1]).ok());
+                let spending_power = maximum.map(|value| value.saturating_sub(debt).min(available));
                 rows.push(json!({"id":id,"agent":loan["agent"],"job":loan["job"],"borrower":loan["borrower"],"signer":loan["signer"],
                     "principal":money(bnb::number(&loan["principal"])?).to_string(),"available":money(available).to_string(),"debt":money(debt).to_string(),"loss":money(bnb::number(&loan["loss"])?).to_string(),
                     "spent":money(bnb::number(&loan["spent"])?).to_string(),"repaid":money(bnb::number(&loan["repaid"])?).to_string(),"per_call":money(bnb::number(&loan["perCall"])?).to_string(),"daily_cap":money(bnb::number(&loan["dailyCap"])?).to_string(),
                     "expires_at":expires as u64,"tools":TOOLS.iter().enumerate().filter(|(i,_)|tools&(1<<i)!=0).map(|(_,t)|*t).collect::<Vec<_>>(),"recipients":loan["recipients"],"accepted":loan["accepted"],"closed":loan["closed"],
-                    "actions":{"accept":borrower&&active&&loan["accepted"]!=true,"spend":borrower&&active&&loan["accepted"]==true&&available>0,"repay":borrower&&debt>0,"close":(borrower||underwriter)&&loan["closed"]!=true}}));
+                    "secured":true,"collateral_symbol":"BNB","collateral":decimal_units(collateral,18),"collateral_value_usdt":health.as_ref().and_then(|h|bnb::number(&h[0]).ok()).map(|v|money(v).to_string()),"maximum_borrow_usdt":maximum.map(|v|money(v).to_string()),"available_borrowing_usdt":spending_power.map(|v|money(v).to_string()),"liquidation_debt_usdt":health.as_ref().and_then(|h|bnb::number(&h[2]).ok()).map(|v|money(v).to_string()),"liquidatable":health.as_ref().is_some_and(|h|h[3]==true),"oracle_status":if health.is_some(){"verified"}else{"unavailable"},
+                    "actions":{"accept":borrower&&active&&loan["accepted"]!=true,"spend":borrower&&active&&loan["accepted"]==true&&spending_power.is_some_and(|v|v>0),"repay":borrower&&debt>0,"close":(borrower||underwriter)&&loan["closed"]!=true,"pledge":borrower&&loan["accepted"]==true&&(loan["closed"]!=true||debt>0),"withdraw_collateral":borrower&&collateral>0&&(debt==0||(module.summary["paused"]!=true&&maximum.is_some_and(|value|value>debt))),"liquidate":debt>0&&health.as_ref().is_some_and(|h|h[3]==true)}}));
             } else {
                 // IDs collected from owned receipts are still checked against
                 // the chain borrower before any private account row is shown.

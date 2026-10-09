@@ -121,3 +121,13 @@
 }
 
 #root .log-kind[data-status="partial"] { color: var(--action-amber); background: #403319; border-color: #97763b; }
+
+.payment-deliveries { margin-top: 24px; min-width: 0; }
+.payment-deliveries h4 { font-size: 14px; font-weight: 500; margin-bottom: 12px; }
+.payment-delivery { border-top: 1px solid var(--line); padding: 14px 0; min-width: 0; overflow-wrap: anywhere; }
+.payment-delivery > p { font-size: 12px; }
+.payment-delivery > p a { display: inline-flex; margin-left: 8px; }
+.payment-delivery details { margin: 12px 0; }
+.payment-delivery summary { cursor: pointer; font-size: 12px; color: var(--text); }
+.payment-delivery-data { max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; border: 1px solid var(--line); border-radius: 6px; background: #091521; padding: 12px; font: 11px/1.65 "IBM Plex Mono", monospace; margin-top: 12px; }
+.payment-delivery-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: 11px; color: var(--muted); }

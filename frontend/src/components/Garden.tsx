@@ -11,6 +11,7 @@ import { jobAPI } from "../lib/jobs";
 type PublicAgent = components["schemas"]["PublicAgent"];
 type AgentRecord = components["schemas"]["AgentRecord"];
 type Pt = { x: number; y: number };
+const isAcceptedJob = (job: PublicJob) => job.state === "accepted" || job.state === "closed";
 
 /* The garden. One plant per agent, grown from its record and nothing else: a leaf (or seed) per completed
    run, a blossom per tool, an amber berry per settled payment, a fallen coral leaf per failure. The species and
@@ -215,10 +216,10 @@ function grow(p: Omit<Plant, "els" | "height" | "bounds" | "perch" | "base" | "s
   for (const job of rec.jobs.filter((j) => j.state !== "cancelled").slice(0, 8)) {
     const jr = rng(hash(job.id)), side = jr() < .5 ? -1 : 1;
     const at = { x: top.x + side * (10 + jr() * 18), y: top.y + 18 + jr() * 22 };
-    const color = job.state === "accepted" ? C.mint : job.funding === "unfunded" ? C.muted : C.blue;
+    const color = isAcceptedJob(job) ? C.mint : job.funding === "unfunded" ? C.muted : C.blue;
     els.push({ key: `job-stem:${job.id}`, type: "curve", pts: [top, { x: at.x, y: at.y + 12 }, at], w: .8, color, order: .97 });
     if (job.funding === "funded" && Number(job.reward_paid) > 0) els.push({ key: `job-payment:${job.id}`, type: "berry", at: { x: at.x + 6, y: at.y + 7 }, r: 2.8, color: C.amber, order: 1 });
-    els.push({ key: `job:${job.id}:${job.state}`, type: job.state === "accepted" ? "leaf" : "bud", at, ang: side * .35, size: 9, color, order: .99 });
+    els.push({ key: `job:${job.id}:${isAcceptedJob(job) ? "accepted" : job.state}`, type: isAcceptedJob(job) ? "leaf" : "bud", at, ang: side * .35, size: 9, color, order: .99 });
   }
   let x0 = 0, x1 = 0, y0 = 0;
   for (const e of els) for (const q of e.type === "curve" ? e.pts : [e.at]) { x0 = Math.min(x0, q.x - 12); x1 = Math.max(x1, q.x + 12); y0 = Math.min(y0, q.y - 14); }
@@ -232,6 +233,7 @@ export function Garden({ highlight, focus }: { highlight: string | null; focus: 
   const navigate = useNavigate();
   const props = useRef({ highlight, focus });
   const [summary, setSummary] = useState("");
+  const [emptyGarden, setEmptyGarden] = useState(false);
   const [publicJobs, setPublicJobs] = useState<PublicJob[]>([]), [jobsError, setJobsError] = useState("");
   const api = useRef<{ focus: (id: string | null) => void; redraw: () => void } | null>(null);
 
@@ -351,6 +353,7 @@ export function Garden({ highlight, focus }: { highlight: string | null; focus: 
       decor.sort((a, b) => a.y - b.y);
       const total = withSpecies.length + hidden, runs = withSpecies.reduce((n, s) => n + s.rec.runs, 0);
       setSummary(`${total} agent${total === 1 ? "" : "s"} · ${runs} run${runs === 1 ? "" : "s"}${hidden ? ` · ${MAX_PLANTS} most active shown` : ""}`);
+      setEmptyGarden(total === 0);
       // rebuild the far layer only when its plants moved or grew something new
       const farPlants = next.filter((p) => p.row >= FAR);
       const sig = farPlants.map((p) => `${p.key}:${Math.round(p.base.x)}:${Math.round(p.base.y)}:${p.els.length}:${p.rec.paused}`).join("|") + `|${W}x${H}`;
@@ -627,7 +630,7 @@ export function Garden({ highlight, focus }: { highlight: string | null; focus: 
         const { paid, fails } = p.rec;
         add("span", `${p.rec.runs} run${p.rec.runs === 1 ? "" : "s"} · ${p.rec.tools.join(" · ") || "no tools"}`);
         if (paid || fails) add("span", `${paid ? `${paid.toFixed(2)} USDT paid` : ""}${paid && fails ? " · " : ""}${fails ? `${fails} failure${fails === 1 ? "" : "s"}` : ""}`);
-        if (p.rec.jobs.length) add("span", `${p.rec.jobs.filter((j) => j.state !== "accepted" && j.state !== "cancelled").length} active job agreements · ${p.rec.jobs.filter((j) => j.state === "accepted").length} accepted`);
+        if (p.rec.jobs.length) add("span", `${p.rec.jobs.filter((j) => !isAcceptedJob(j) && j.state !== "cancelled").length} active job agreements · ${p.rec.jobs.filter(isAcceptedJob).length} accepted`);
         add("em", `grown as ${SPECIES_NAME[p.species]}${p.rec.young ? ", still young" : ""}`);
       }
       el.style.left = `${Math.min(W - 230, Math.max(8, sx + 14))}px`; el.style.top = `${Math.max(8, sy - 20)}px`;
@@ -679,6 +682,7 @@ export function Garden({ highlight, focus }: { highlight: string | null; focus: 
         <canvas ref={canvas} role="img" aria-label="A garden of plants, one per agent, grown from each agent's runs, tools, payments, failures, job agreements and delegation roots" />
         <div className="garden-tip" ref={tip} hidden />
       </div>
+      {emptyGarden&&<p className="field-help garden-empty" role="status">No public agents have been shared yet. Agent plants appear when a real registration is published.</p>}
       <div className="garden-legend" aria-hidden="true">
         <span><i className="leaf" />leaf or seed · completed run</span>
         <span><i className="bloom" />blossom · tool</span>

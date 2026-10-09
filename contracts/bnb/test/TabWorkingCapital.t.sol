@@ -1,16 +1,31 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
-import {FinanceBase, FinanceToken, FinanceTaxToken, FinanceCallbackToken} from "./TabFinanceTestBase.sol";
+import {FinanceBase, FinanceToken, FinanceFeed, FinanceTaxToken, FinanceCallbackToken} from "./TabFinanceTestBase.sol";
 import {TabProtocol} from "../src/TabProtocol.sol";
 import {TabLendingPool} from "../src/TabLendingPool.sol";
 import {TabUSDTLiquidity} from "../src/TabUSDTLiquidity.sol";
+import {TabHolderAccess} from "../src/TabHolderAccess.sol";
+import {TabPriceOracle} from "../src/TabPriceOracle.sol";
+
+contract RejectNativeCollateral { receive() external payable { revert("native rejected"); } }
 
 contract TabWorkingCapitalTest is FinanceBase {
     TabLendingPool pool;
+    FinanceFeed bnbFeed;
+    FinanceFeed stableFeed;
+    TabPriceOracle oracle;
+    address constant WBNB = 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c;
 
     function setUp() public override {
         super.setUp();
-        pool = new TabLendingPool(address(protocol));
+        _holders(protocol);
+        FinanceToken wrapped = new FinanceToken(18);
+        vm.etch(WBNB, address(wrapped).code);
+        bnbFeed = new FinanceFeed(8, 1000e8);
+        stableFeed = new FinanceFeed(8, 1e8);
+        oracle = new TabPriceOracle(WBNB, address(usdt), address(bnbFeed), address(stableFeed), 1 hours, 1 hours);
+        pool = new TabLendingPool(address(protocol), address(oracle));
+        vm.deal(borrower, 10 ether);
         _approve(address(usdt), lender, address(pool));
         _approve(address(usdt), borrower, address(pool));
         vm.prank(lender);
@@ -39,6 +54,12 @@ contract TabWorkingCapitalTest is FinanceBase {
         pool.approveLoan(_terms());
         vm.prank(borrower);
         pool.acceptLoan(LOAN);
+        vm.prank(borrower);
+        pool.pledgeCollateral{value: 0.1 ether}(LOAN);
+    }
+
+    function _oracle(address stable) internal returns (address) {
+        return address(new TabPriceOracle(WBNB, stable, address(new FinanceFeed(8, 1000e8)), address(new FinanceFeed(8, 1e8)), 1 hours, 1 hours));
     }
 
     function _spend(uint256 amount, bytes32 request) internal {
@@ -53,6 +74,66 @@ contract TabWorkingCapitalTest is FinanceBase {
         assertEq(pool.redeem(1_000 ether, lender, lender), 1_000 ether);
         assertEq(pool.totalAssets(), 0);
         assertEq(usdt.balanceOf(address(pool)), 0);
+    }
+
+    function testHolderLossBlocksNewDepositsButKeepsRedemption() public {
+        vm.prank(lender);
+        holderToken.transfer(merchant, 1 ether);
+        assertFalse(pool.hasTabAccess(lender));
+        assertEq(pool.maxDeposit(lender), 0);
+        assertEq(pool.maxMint(lender), 0);
+        vm.prank(lender);
+        vm.expectRevert(TabHolderAccess.TabHoldingRequired.selector);
+        pool.deposit(1 ether, lender);
+        vm.prank(lender);
+        assertEq(pool.redeem(1_000 ether, lender, lender), 1_000 ether);
+    }
+
+    function testDepositChecksCallerAndShareReceiver() public {
+        vm.prank(lender);
+        vm.expectRevert(TabHolderAccess.TabHoldingRequired.selector);
+        pool.deposit(1 ether, merchant);
+        _approve(address(usdt), merchant, address(pool));
+        vm.prank(merchant);
+        vm.expectRevert(TabHolderAccess.TabHoldingRequired.selector);
+        pool.deposit(1 ether, lender);
+    }
+
+    function testMissingOfficialTokenFailsClosed() public {
+        TabProtocol empty = TabProtocol(deployCode("TabProtocol.sol:TabProtocol", abi.encode(address(usdt), address(this))));
+        TabLendingPool emptyPool = new TabLendingPool(address(empty), address(oracle));
+        assertFalse(emptyPool.hasTabAccess(lender));
+        assertEq(emptyPool.maxDeposit(lender), 0);
+        vm.prank(lender);
+        vm.expectRevert(TabHolderAccess.TabHoldingRequired.selector);
+        emptyPool.deposit(1 ether, lender);
+    }
+
+    function testHolderLossBlocksAcceptAndDelegatedSpendingButKeepsRecovery() public {
+        pool.approveLoan(_terms());
+        vm.prank(borrower);
+        holderToken.transfer(merchant, 1 ether);
+        vm.prank(borrower);
+        vm.expectRevert(TabHolderAccess.TabHoldingRequired.selector);
+        pool.acceptLoan(LOAN);
+        vm.prank(merchant);
+        holderToken.transfer(borrower, 1 ether);
+        vm.prank(borrower);
+        pool.acceptLoan(LOAN);
+        vm.prank(borrower);
+        pool.pledgeCollateral{value: 0.1 ether}(LOAN);
+        _spend(1 ether, keccak256("holder-paid"));
+        vm.prank(borrower);
+        holderToken.transfer(merchant, 1 ether);
+        vm.prank(signer);
+        vm.expectRevert(TabHolderAccess.TabHoldingRequired.selector);
+        pool.spendLoan(LOAN, merchant, 1 ether, 1, keccak256("after-sale"), RECEIPT);
+        vm.prank(borrower);
+        pool.repayLoan(LOAN, 1 ether);
+        vm.prank(borrower);
+        pool.closeLoan(LOAN);
+        assertEq(pool.outstanding(), 0);
+        assertEq(pool.reserved(), 0);
     }
 
     function testLoanReservesPreventOvercommittedWithdrawals() public {
@@ -200,19 +281,27 @@ contract TabWorkingCapitalTest is FinanceBase {
         assertEq(pool.maxWithdraw(lender), 1_000 ether);
     }
 
-    function testUnsecuredDefaultReducesShareValueAndRecoveryRestoresAssets() public {
+    function testSecuredResidualDefaultRequiresExhaustedCollateralAndRecoveryRestoresAssets() public {
         _line();
         _spend(10 ether, keccak256("unpaid"));
         pool.closeLoan(LOAN);
         vm.expectRevert(TabUSDTLiquidity.Terms.selector);
         pool.recognizeLoss(LOAN);
         vm.warp(block.timestamp + 8 days);
+        vm.expectRevert(TabUSDTLiquidity.Terms.selector);
         pool.recognizeLoss(LOAN);
-        assertEq(pool.totalAssets(), 990 ether);
-        assertEq(pool.getLoan(LOAN).debt, 10 ether);
-        assertEq(pool.getLoan(LOAN).loss, 10 ether);
+        bnbFeed.set(50e8);
+        stableFeed.set(1e8);
+        _approve(address(usdt), merchant, address(pool));
+        (uint256 repaid, uint256 seized) = pool.liquidationQuote(LOAN, 10 ether);
+        vm.prank(merchant);
+        pool.liquidateLoan(LOAN, 10 ether, seized);
+        pool.recognizeLoss(LOAN);
+        assertEq(pool.totalAssets(), 990 ether + repaid);
+        assertEq(pool.getLoan(LOAN).debt, 10 ether - repaid);
+        assertEq(pool.getLoan(LOAN).loss, 10 ether - repaid);
         vm.prank(borrower);
-        pool.repayLoan(LOAN, 10 ether);
+        pool.repayLoan(LOAN, 10 ether - repaid);
         assertEq(pool.totalAssets(), 1_000 ether);
         assertEq(pool.getLoan(LOAN).loss, 0);
     }
@@ -253,7 +342,8 @@ contract TabWorkingCapitalTest is FinanceBase {
         FinanceTaxToken taxed = new FinanceTaxToken(18);
         TabProtocol local =
             TabProtocol(deployCode("TabProtocol.sol:TabProtocol", abi.encode(address(taxed), address(this))));
-        TabLendingPool localPool = new TabLendingPool(address(local));
+        TabLendingPool localPool = new TabLendingPool(address(local), _oracle(address(taxed)));
+        _holders(local);
         taxed.mint(lender, 10 ether);
         taxed.setTax(true);
         _approve(address(taxed), lender, address(localPool));
@@ -269,7 +359,8 @@ contract TabWorkingCapitalTest is FinanceBase {
         TabProtocol local = TabProtocol(
             deployCode("TabProtocol.sol:TabProtocol", abi.encode(address(callback), address(this)))
         );
-        TabLendingPool localPool = new TabLendingPool(address(local));
+        _holders(local);
+        TabLendingPool localPool = new TabLendingPool(address(local), _oracle(address(callback)));
         callback.mint(lender, 10 ether);
         _approve(address(callback), lender, address(localPool));
         callback.arm(address(localPool));
@@ -289,5 +380,212 @@ contract TabWorkingCapitalTest is FinanceBase {
         vm.prank(borrower);
         pool.redeem(1 ether, lender, lender);
         assertEq(pool.balanceOf(lender), 999 ether);
+    }
+
+    function testImmutableOracleAndRiskConfiguration() public view {
+        assertEq(pool.securedCreditVersion(), 1);
+        assertEq(address(pool.collateralOracle()), address(oracle));
+        assertEq(pool.WBNB(), WBNB);
+        assertEq(pool.LTV_BPS(), 5000);
+        assertEq(pool.LIQUIDATION_BPS(), 7500);
+        assertEq(pool.LIQUIDATION_BONUS_BPS(), 500);
+        (uint256 value, uint256 borrowing, uint256 liquidationDebt) = pool.collateralQuote(0.1 ether);
+        assertEq(value, 100 ether);
+        assertEq(borrowing, 50 ether);
+        assertEq(liquidationDebt, 75 ether);
+    }
+
+    function testConstructorRejectsWrongCollateralAndQuoteBindings() public {
+        FinanceToken wrong = new FinanceToken(18);
+        TabPriceOracle wrongCollateral = new TabPriceOracle(address(wrong), address(usdt), address(bnbFeed), address(stableFeed), 1 hours, 1 hours);
+        vm.expectRevert(TabLendingPool.Collateral.selector);
+        new TabLendingPool(address(protocol), address(wrongCollateral));
+        vm.expectRevert(TabLendingPool.Collateral.selector);
+        new TabLendingPool(address(protocol), _oracle(address(wrong)));
+    }
+
+    function testApprovalAndAcceptanceDoNotCreateUnsecuredSpendingPower() public {
+        pool.approveLoan(_terms());
+        vm.prank(borrower);
+        pool.acceptLoan(LOAN);
+        vm.prank(signer);
+        vm.expectRevert(TabLendingPool.Collateral.selector);
+        pool.spendLoan(LOAN, merchant, 1 ether, 1, keccak256("no-collateral"), RECEIPT);
+        assertEq(pool.outstanding(), 0);
+        vm.prank(borrower);
+        pool.pledgeCollateral{value: 0.002 ether}(LOAN);
+        _spend(1 ether, keccak256("exact-ltv"));
+        vm.prank(signer);
+        vm.expectRevert(TabLendingPool.Collateral.selector);
+        pool.spendLoan(LOAN, merchant, 1, 1, keccak256("above-ltv"), RECEIPT);
+    }
+
+    function testCollateralIsIsolatedAndOnlyBorrowerCanRecoverIt() public {
+        _line();
+        vm.prank(lender);
+        vm.expectRevert(TabUSDTLiquidity.Authority.selector);
+        pool.pledgeCollateral{value: 1}(LOAN);
+        vm.prank(lender);
+        vm.expectRevert(TabUSDTLiquidity.Authority.selector);
+        pool.withdrawCollateral(LOAN, 1);
+        bytes32 other = keccak256("other-loan");
+        vm.prank(borrower);
+        vm.expectRevert(TabUSDTLiquidity.Authority.selector);
+        pool.pledgeCollateral{value: 1}(other);
+        assertEq(pool.collateral(LOAN), 0.1 ether);
+        assertEq(pool.totalCollateral(), 0.1 ether);
+        assertEq(address(pool).balance, 0.1 ether);
+    }
+
+    function testWithdrawalKeepsDebtWithinLtvAndRepaymentUnlocksExit() public {
+        _line();
+        _spend(10 ether, keccak256("debt"));
+        vm.prank(borrower);
+        pool.withdrawCollateral(LOAN, 0.08 ether);
+        vm.prank(borrower);
+        vm.expectRevert(TabLendingPool.Collateral.selector);
+        pool.withdrawCollateral(LOAN, 1);
+        vm.prank(borrower);
+        pool.repayLoan(LOAN, 10 ether);
+        vm.prank(borrower);
+        pool.withdrawCollateral(LOAN, 0.02 ether);
+        assertEq(pool.totalCollateral(), 0);
+    }
+
+    function testHolderLossPauseAndOracleFailureKeepTopupRepaymentAndDebtFreeExit() public {
+        _line();
+        _spend(10 ether, keccak256("debt"));
+        pool.setPaused(true);
+        vm.prank(borrower);
+        holderToken.transfer(merchant, 1 ether);
+        bnbFeed.set(0);
+        vm.prank(borrower);
+        pool.pledgeCollateral{value: 0.01 ether}(LOAN);
+        vm.prank(borrower);
+        pool.repayLoan(LOAN, 10 ether);
+        vm.prank(borrower);
+        pool.withdrawCollateral(LOAN, 0.11 ether);
+        vm.prank(borrower);
+        pool.closeLoan(LOAN);
+        assertEq(pool.outstanding(), 0);
+        assertEq(pool.totalCollateral(), 0);
+    }
+
+    function testStaleOracleStopsNewDebtAndLiquidation() public {
+        _line();
+        _spend(10 ether, keccak256("debt"));
+        bnbFeed.setRound(1, 1, block.timestamp - 2 hours);
+        vm.prank(signer);
+        vm.expectRevert(TabPriceOracle.InvalidFeed.selector);
+        pool.spendLoan(LOAN, merchant, 1 ether, 1, keccak256("stale"), RECEIPT);
+        vm.expectRevert(TabPriceOracle.InvalidFeed.selector);
+        pool.liquidationQuote(LOAN, 10 ether);
+        vm.prank(borrower);
+        pool.repayLoan(LOAN, 10 ether);
+        vm.prank(borrower);
+        pool.withdrawCollateral(LOAN, 0.1 ether);
+    }
+
+    function testUSDTAppreciationLowersNativeBorrowingPower() public {
+        _line();
+        stableFeed.set(2e8);
+        (,uint256 borrowing,) = pool.collateralQuote(0.1 ether);
+        assertEq(borrowing, 25 ether);
+        _spend(10 ether, keccak256("first"));
+        _spend(10 ether, keccak256("second"));
+        vm.prank(signer);
+        vm.expectRevert(TabLendingPool.Collateral.selector);
+        pool.spendLoan(LOAN, merchant, 6 ether, 1, keccak256("above"), RECEIPT);
+    }
+
+    function testHealthyCollateralCannotBeLiquidatedUntilExpiryGrace() public {
+        _line();
+        _spend(10 ether, keccak256("debt"));
+        vm.expectRevert(TabLendingPool.Collateral.selector);
+        pool.liquidationQuote(LOAN, 10 ether);
+        vm.warp(pool.getLoan(LOAN).expiresAt + 1 days);
+        bnbFeed.set(1000e8); stableFeed.set(1e8);
+        vm.expectRevert(TabLendingPool.Collateral.selector);
+        pool.liquidationQuote(LOAN, 10 ether);
+        vm.warp(block.timestamp + 1);
+        (uint256 repaid, uint256 seized) = pool.liquidationQuote(LOAN, 10 ether);
+        assertEq(repaid, 10 ether);
+        assertEq(seized, 0.0105 ether);
+    }
+
+    function testLiquidationRecoversUsdtClosesLineAndPreservesBorrowerExcess() public {
+        _line();
+        _spend(10 ether, keccak256("debt"));
+        bnbFeed.set(120e8);
+        _approve(address(usdt), merchant, address(pool));
+        (uint256 repaid, uint256 seized) = pool.liquidationQuote(LOAN, 10 ether);
+        assertEq(repaid, 10 ether);
+        assertEq(seized, 0.0875 ether);
+        uint256 beforeNative = merchant.balance;
+        uint256 beforeUsdt = usdt.balanceOf(merchant);
+        vm.prank(merchant);
+        pool.liquidateLoan(LOAN, 10 ether, seized);
+        assertEq(merchant.balance - beforeNative, seized);
+        assertEq(beforeUsdt - usdt.balanceOf(merchant), repaid);
+        assertEq(pool.reserved(), 0);
+        assertEq(pool.outstanding(), 0);
+        assertTrue(pool.getLoan(LOAN).closed);
+        assertEq(pool.collateral(LOAN), 0.0125 ether);
+        vm.prank(borrower);
+        pool.withdrawCollateral(LOAN, 0.0125 ether);
+        assertEq(pool.totalCollateral(), 0);
+        assertEq(pool.totalAssets(), 1_000 ether);
+    }
+
+    function testPartialLiquidationSlippageAndApprovalAreAtomic() public {
+        _line();
+        _spend(10 ether, keccak256("debt"));
+        bnbFeed.set(120e8);
+        (uint256 repaid, uint256 seized) = pool.liquidationQuote(LOAN, 4 ether);
+        assertEq(repaid, 4 ether);
+        assertEq(seized, 0.035 ether);
+        _approve(address(usdt), merchant, address(pool));
+        vm.prank(merchant);
+        vm.expectRevert(TabLendingPool.Collateral.selector);
+        pool.liquidateLoan(LOAN, 4 ether, seized + 1);
+        assertEq(pool.collateral(LOAN), 0.1 ether);
+        assertEq(pool.reserved(), 30 ether);
+        vm.prank(merchant);
+        pool.liquidateLoan(LOAN, 4 ether, seized);
+        assertEq(pool.getLoan(LOAN).debt, 6 ether);
+        assertEq(pool.collateral(LOAN), 0.065 ether);
+        assertEq(pool.outstanding(), 6 ether);
+        assertEq(pool.totalAssets(), 1_000 ether);
+    }
+
+    function testNativeReceiverFailureRollsBackCollateralWithdrawal() public {
+        _line();
+        RejectNativeCollateral rejector = new RejectNativeCollateral();
+        vm.etch(borrower, address(rejector).code);
+        vm.prank(borrower);
+        vm.expectRevert(TabUSDTLiquidity.TransferFailed.selector);
+        pool.withdrawCollateral(LOAN, 0.1 ether);
+        assertEq(pool.collateral(LOAN), 0.1 ether);
+        assertEq(pool.totalCollateral(), 0.1 ether);
+    }
+
+    function testFuzzLiquidationConservesCollateralAndPrincipal(uint128 debtSeed, uint128 priceSeed) public {
+        _line();
+        uint256 debt = bound(debtSeed, 1 ether, 10 ether);
+        _spend(debt, keccak256("liquidation-fuzz"));
+        uint256 price = bound(priceSeed, 1e8, 10e8);
+        bnbFeed.set(int256(price));
+        _approve(address(usdt), merchant, address(pool));
+        (uint256 repaid, uint256 seized) = pool.liquidationQuote(LOAN, debt);
+        assertLe(repaid, debt);
+        assertLe(seized, 0.1 ether);
+        vm.prank(merchant);
+        pool.liquidateLoan(LOAN, debt, seized);
+        assertEq(pool.outstanding(), debt - repaid);
+        assertEq(pool.totalAssets(), 1_000 ether);
+        assertEq(pool.totalCollateral(), 0.1 ether - seized);
+        assertEq(address(pool).balance, pool.totalCollateral());
+        assertEq(usdt.balanceOf(address(pool)), pool.liquidity());
+        assertEq(pool.getLoan(LOAN).debt + pool.getLoan(LOAN).repaid, debt);
     }
 }

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ArrowUpRight, Download, RefreshCw, Search } from "lucide-react";
 import { request } from "../lib/api";
@@ -28,7 +27,7 @@ const unavailable = (event: AgentEvent) =>
   ["failed", "paid_delivery_failed", "unavailable", "not_connected", "budget_reached", "interrupted"].includes(event.status);
 const partialRun = (event: AgentEvent) =>
   event.kind === "run_partial" || (event.kind === "run_completed" && event.status === "partial");
-export function LiveActivity({ compact = false, controls = false, preview }: { compact?: boolean; controls?: boolean; preview?: ReactNode }) {
+export function LiveActivity({ compact = false, controls = false }: { compact?: boolean; controls?: boolean }) {
   const chainId = useChainId();
   const [liveAgents, setLiveAgents] = useState<
     components["schemas"]["PublicAgent"][]
@@ -143,7 +142,7 @@ export function LiveActivity({ compact = false, controls = false, preview }: { c
     URL.revokeObjectURL(url);
   };
   return (
-    <section className={`panel live-activity ${compact ? "compact" : ""} ${preview ? "with-preview" : ""}`}>
+    <section className={`panel live-activity ${compact ? "compact" : ""}`}>
       <div className="panel-heading">
         <div>
           <h2>{compact ? "latest activity" : "log"}</h2>
@@ -236,7 +235,6 @@ export function LiveActivity({ compact = false, controls = false, preview }: { c
               export
             </button>
           </div>}
-      {preview}
       {errors.activity && (
         <p role="alert" className="form-error">
           {loaded.activity ? "Activity could not be refreshed. Showing the last recorded log." : "Activity is temporarily unavailable. Try refreshing."}

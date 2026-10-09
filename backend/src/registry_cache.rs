@@ -633,6 +633,94 @@ mod tests {
         assert!(rebuilding.block_number.is_none());
     }
     #[tokio::test]
+    async fn public_registry_unlists_exact_identities_without_mutating_verified_chain_cache() {
+        use axum::{
+            body::Body,
+            http::{Request, StatusCode},
+        };
+        use http_body_util::BodyExt;
+        use tower::ServiceExt;
+        let f = fixture().await;
+        let exact_third = "0xcaaf7c62ca25081e483bf60eea68f779f218fdc21ba442408dc4aeb2da1c426b";
+        let mut third_registration = registration(6, 3);
+        third_registration["topics"][1] = json!(exact_third);
+        f.mock.lock().unwrap().logs =
+            vec![registration(5, 1), third_registration, registration(7, 2)];
+        let mut state = crate::AppState::new((*f.bnb.config).clone()).unwrap();
+        state.bnb = f.bnb.clone();
+        f.bnb.registered_ids(&f.store).await.unwrap();
+        let mut cached = state.registry().await;
+        for (n, registry_id) in [(1, id(1)), (3, exact_third.into()), (2, id(2))] {
+            cached.agents.push(crate::models::RegisteredAgent {
+                id: registry_id,
+                name: format!("agent {n}"),
+                purpose: "actual registered policy".into(),
+                owner: PROTOCOL.into(),
+                daily_cap: rust_decimal::Decimal::ONE,
+                providers: vec![],
+                paused: false,
+                version: 1,
+                policy_hash: block_hash(n),
+                policy_matches: false,
+                funding_status: "not_assessed".into(),
+            });
+        }
+        *state.registry_cache.write().await = Some(RegistrySnapshot {
+            data: cached,
+            generation: f.bnb.registry_generation(),
+        });
+        let mut agent=state.create_agent("owner",serde_json::from_value(json!({"name":"team check","purpose":"read actual chain observations","tools":["bnb-rpc"],"daily_cap":"1","max_call":"0.1"})).unwrap()).unwrap();
+        agent.registry_id = Some(id(1));
+        state.store.save_agent(&agent).unwrap();
+        let policy = state.policy(&agent);
+        let db = state.store.connect().unwrap();
+        db.execute(
+            "INSERT INTO agent_public_exclusions VALUES(?,?)",
+            params![agent.id, crate::models::now()],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO registry_public_exclusions VALUES(?,?)",
+            params![exact_third.to_uppercase(), crate::models::now()],
+        )
+        .unwrap();
+        let response = crate::api::router(state.clone())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/registry")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let value: Value =
+            serde_json::from_slice(&response.into_body().collect().await.unwrap().to_bytes())
+                .unwrap();
+        assert_eq!(value["agents"].as_array().unwrap().len(), 1);
+        assert_eq!(value["agents"][0]["id"], id(2));
+        assert_eq!(
+            state
+                .registry_cache
+                .read()
+                .await
+                .as_ref()
+                .unwrap()
+                .data
+                .agents
+                .len(),
+            3
+        );
+        assert_eq!(
+            f.bnb.cached_registered_ids().unwrap().0,
+            BTreeSet::from([id(1), id(2), exact_third.into()])
+        );
+        assert_eq!(
+            state.policy(&state.store.agent("owner", &agent.id).unwrap()),
+            policy
+        );
+    }
+    #[tokio::test]
     async fn transient_rpc_reads_retry_but_broadcasts_and_permanent_errors_do_not() {
         use axum::{http::StatusCode, response::IntoResponse};
         use std::sync::atomic::{AtomicUsize, Ordering};

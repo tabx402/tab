@@ -45,26 +45,51 @@ fn agent_input(public: bool) -> AgentInput {
 fn retried_creation_has_one_agent_and_rejects_changed_payload() {
     let (_dir, app) = state();
     let key = "9dfb9a7b-e87f-4cc4-af29-a953e2c93e05";
-    let first = app.create_agent_once("owner-a",agent_input(true),Some(key)).unwrap();
-    let second = app.create_agent_once("owner-a",agent_input(true),Some(key)).unwrap();
-    assert_eq!(first.id,second.id);
-    assert_eq!(app.store.list_agents("owner-a").unwrap().len(),1);
-    let mut changed=agent_input(true); changed.name="different agent".into();
-    assert!(app.create_agent_once("owner-a",changed,Some(key)).is_err());
-    let other=app.create_agent_once("owner-b",agent_input(true),Some(key)).unwrap();
-    assert_ne!(other.id,first.id);
-    assert!(app.account_profile("owner-a").unwrap()["registered"].as_bool().unwrap());
-    assert_eq!(app.account_profile("owner-b").unwrap()["agents"],1);
+    let first = app
+        .create_agent_once("owner-a", agent_input(true), Some(key))
+        .unwrap();
+    let second = app
+        .create_agent_once("owner-a", agent_input(true), Some(key))
+        .unwrap();
+    assert_eq!(first.id, second.id);
+    assert_eq!(app.store.list_agents("owner-a").unwrap().len(), 1);
+    let mut changed = agent_input(true);
+    changed.name = "different agent".into();
+    assert!(app
+        .create_agent_once("owner-a", changed, Some(key))
+        .is_err());
+    let other = app
+        .create_agent_once("owner-b", agent_input(true), Some(key))
+        .unwrap();
+    assert_ne!(other.id, first.id);
+    assert!(app.account_profile("owner-a").unwrap()["registered"]
+        .as_bool()
+        .unwrap());
+    assert_eq!(app.account_profile("owner-b").unwrap()["agents"], 1);
 }
 #[test]
 fn account_profile_is_private_and_registration_is_idempotent() {
-    let (_dir, app)=state();
-    assert_eq!(app.account_profile("first").unwrap()["registered"],false);
-    let a=app.register_account("first",AccountInput{display_name:"Ryan".into()}).unwrap();
-    let b=app.register_account("first",AccountInput{display_name:String::new()}).unwrap();
-    assert_eq!(a["created_at"],b["created_at"]);
-    assert_eq!(b["display_name"],"Ryan");
-    assert_eq!(app.account_profile("second").unwrap()["registered"],false);
+    let (_dir, app) = state();
+    assert_eq!(app.account_profile("first").unwrap()["registered"], false);
+    let a = app
+        .register_account(
+            "first",
+            AccountInput {
+                display_name: "Ryan".into(),
+            },
+        )
+        .unwrap();
+    let b = app
+        .register_account(
+            "first",
+            AccountInput {
+                display_name: String::new(),
+            },
+        )
+        .unwrap();
+    assert_eq!(a["created_at"], b["created_at"]);
+    assert_eq!(b["display_name"], "Ryan");
+    assert_eq!(app.account_profile("second").unwrap()["registered"], false);
 }
 fn job_input(executor: &str, budget: &str) -> JobInput {
     serde_json::from_value(json!({"title":"review source documents","description":"compare primary sources and provide links","executor_id":executor,"budget":budget,"max_call":"0.1","deadline":(Utc::now()+Duration::hours(4)).to_rfc3339(),"tools":["bnb-rpc"],"public_activity":true})).unwrap()
@@ -102,6 +127,39 @@ async fn public_api_is_bnb_and_fail_closed_without_keys_program_or_tab() {
     assert_eq!(token["buyer_disagreement_slashable"], false);
     let (_, x402) = get(app, "/api/x402/system").await;
     assert_eq!(x402["settlement_enabled"], false);
+}
+#[tokio::test]
+async fn retired_overview_never_serves_generated_activity_or_changes_records() {
+    let (_dir, state) = state();
+    let agent = state.create_agent("owner", agent_input(true)).unwrap();
+    let events_before = state.events(Some("owner"), None, 0, 100).unwrap();
+    let app = api::router(state.clone());
+    for path in [
+        "/api/overview",
+        "/api/overview?mode=public",
+        "/api/overview?mode=example",
+        "/api/overview?mode=demo",
+    ] {
+        let (status, body) = get(app.clone(), path).await;
+        assert_eq!(status, StatusCode::GONE);
+        assert!(body["detail"].as_str().unwrap().contains("actual records"));
+        assert!(body.get("agents").is_none());
+        assert!(body.get("receipts").is_none());
+    }
+    assert_eq!(state.store.list_agents("owner").unwrap().len(), 1);
+    assert_eq!(
+        state.store.agent("owner", &agent.id).unwrap().plan.name,
+        "willow"
+    );
+    assert_eq!(state.store.runs(&agent.id).unwrap().len(), 0);
+    assert_eq!(
+        state.events(Some("owner"), None, 0, 100).unwrap().len(),
+        events_before.len()
+    );
+    let (_, live) = get(app.clone(), "/api/agents/live").await;
+    assert_eq!(live, json!([]));
+    let (_, records) = get(app, "/api/agents/records").await;
+    assert_eq!(records, json!([]));
 }
 #[tokio::test]
 async fn private_routes_reject_unverified_access_and_disable_caching() {
@@ -387,6 +445,10 @@ fn schema_contains_rust_bnb_contracts_and_freeform_output_objects() {
     let serialized = serde_json::to_string(&schema).unwrap().to_lowercase();
     assert!(serialized.contains("bnb"));
     assert!(serialized.contains("usdt"));
+    assert!(schema["paths"].get("/api/overview").is_none());
+    for retired in ["AgentExample", "PublicData", "Receipt", "Summary"] {
+        assert!(schema["components"]["schemas"].get(retired).is_none());
+    }
 }
 #[test]
 fn database_roundtrip_preserves_exact_decimal_policies() {

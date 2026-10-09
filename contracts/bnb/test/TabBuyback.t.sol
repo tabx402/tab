@@ -4,6 +4,7 @@ import {FinanceBase, FinanceToken, FinanceTaxToken} from "./TabFinanceTestBase.s
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {TabBuyback} from "../src/TabBuyback.sol";
 import {TabProtocol} from "../src/TabProtocol.sol";
+import {TabHolderAccess} from "../src/TabHolderAccess.sol";
 
 contract FinanceRouter {
     uint256 public quotedRate = 2;
@@ -56,6 +57,8 @@ contract TabBuybackTest is FinanceBase {
     function setUp() public override {
         super.setUp();
         token = new FinanceToken(18);
+        token.mint(lender, 1 ether);
+        token.mint(address(this), 1 ether);
         protocol.configureTab(address(token));
         router = new FinanceRouter();
         buyback = new TabBuyback(address(protocol), address(router), _route(), 500);
@@ -71,6 +74,21 @@ contract TabBuybackTest is FinanceBase {
     function _fund() internal {
         vm.prank(lender);
         buyback.fund(100 ether);
+    }
+
+    function testBuybackFundingAndExecutionRequireCurrentHoldings() public {
+        _fund();
+        vm.prank(lender);
+        token.transfer(merchant, 1 ether);
+        vm.prank(lender);
+        vm.expectRevert(TabHolderAccess.TabHoldingRequired.selector);
+        buyback.fund(1 ether);
+        token.transfer(merchant, token.balanceOf(address(this)));
+        vm.expectRevert(TabHolderAccess.TabHoldingRequired.selector);
+        buyback.execute(1 ether, 1 ether, block.timestamp + 1 minutes);
+        assertEq(buyback.spentUsdt(), 0);
+        buyback.setPaused(true);
+        assertTrue(buyback.paused());
     }
 
     function testExplicitFundingPurchaseAndDeadAddressReceipt() public {
@@ -194,6 +212,8 @@ contract TabBuybackTest is FinanceBase {
         TabProtocol local =
             TabProtocol(deployCode("TabProtocol.sol:TabProtocol", abi.encode(address(usdt), address(this))));
         local.configureTab(address(taxed));
+        taxed.mint(lender, 1 ether);
+        taxed.mint(address(this), 1 ether);
         address[] memory route = new address[](2);
         route[0] = address(usdt);
         route[1] = address(taxed);

@@ -48,6 +48,12 @@ if command == "curl":
         print(json.dumps({"status":"ok","backend":"rust" if new_api else "python"}))
     elif path == "/api/config":
         value = {"backend":"rust","chain_id":56,"usdt_address":"0x55d398326f99059ff775485246999027b3197955","usdt_decimals":18,"contracts_status":"live","financial_actions_enabled":True}
+        if new_api:
+            manifest = json.loads((root / "current-api/contracts/deployments/bnb-56.json").read_text())
+            value["official_tab_address"] = manifest.get("official_tab_address")
+            value["holder_access_enabled"] = manifest.get("holder_access_enabled", False)
+        if scenario == "holder_access" and new_api:
+            value["holder_access_enabled"] = False
         if scenario == "config" and new_api:
             value["chain_id"] = 97
         print(json.dumps(value))
@@ -243,8 +249,41 @@ class PublisherTests(unittest.TestCase):
         self.assertNotIn("TAB_BNB_SPONSOR_ENABLED=", pins)
         self.assertIn("TAB_BNB_PROTOCOL=0x1111111111111111111111111111111111111111\n", pins)
         self.assertIn("TAB_OFFICIAL_TOKEN=\n", pins)
+        self.assertIn("TAB_HOLDER_ACCESS_ENABLED=false\n", pins)
         self.assertIn("TAB_INFERENCE_DAILY_MICROS=100000\n", pins)
         self.assertNotIn("TAB_BNB_RPC=", pins)
+
+    def configure_holder_fixture(self):
+        path = self.root / "contracts/deployments/bnb-56.json"
+        manifest = json.loads(path.read_text())
+        manifest.update(official_tab_address="0xf07449517ae4b48808098c573a5347e67c714444", official_tab_code_hash="0x" + "12" * 32, holder_access_enabled=True)
+        path.write_text(json.dumps(manifest))
+
+    def test_official_tab_and_holder_policy_survive_release_packaging(self):
+        self.configure_holder_fixture()
+        self.stage()
+        pins = (self.release / "deploy/bnb.env").read_text()
+        self.assertIn("TAB_OFFICIAL_TOKEN=0xf07449517ae4b48808098c573a5347e67c714444\n", pins)
+        self.assertIn("TAB_HOLDER_ACCESS_ENABLED=true\n", pins)
+        self.assertEqual(pins.count("TAB_OFFICIAL_TOKEN="), 1)
+        result = self.run_release("publish")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_holder_enforcement_mismatch_rolls_back_release(self):
+        self.configure_holder_fixture()
+        self.stage()
+        result = self.run_release("publish", "holder_access")
+        self.assertNotEqual(result.returncode, 0)
+        self.assert_original()
+
+    def test_cannot_package_holder_policy_without_verified_token(self):
+        path = self.root / "contracts/deployments/bnb-56.json"
+        manifest = json.loads(path.read_text())
+        manifest["holder_access_enabled"] = True
+        path.write_text(json.dumps(manifest))
+        result = self.run_release("stage")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Holder access requires", result.stderr)
 
     def test_healthy_publish_switches_api_and_web_and_checks_entry_assets(self):
         self.stage()

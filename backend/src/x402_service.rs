@@ -1,7 +1,7 @@
 //! Wallet-authorized Permit2 payments with persistent quote reservations.
 use crate::{
     bnb,
-    db::{decode, encode},
+    db::{decode, encode, Store},
     error::{ApiError, Result},
     models::{identifier, money, now, units},
     x402::{self, Authorization, Merchant, Offer},
@@ -21,6 +21,8 @@ struct Quote {
     authorization: Authorization,
     day: i64,
     expires: i64,
+    #[serde(default)]
+    task_hash: String,
 }
 impl AppState {
     async fn x402_chain_ready(&self) -> Result<()> {
@@ -159,6 +161,7 @@ impl AppState {
             offer,
             authorization,
             day,
+            task_hash: self.policy(&agent),
         };
         self.reserve_x402_quote(owner, &quote, cap, chain_spent, timestamp)?;
         Ok(
@@ -218,6 +221,13 @@ impl AppState {
     ) -> Result<()> {
         let mut db = self.store.connect()?;
         let tx = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if !quote.task_hash.is_empty()
+            && self.policy(&Store::agent_in(&tx, owner, &quote.agent_id)?) != quote.task_hash
+        {
+            return Err(ApiError::conflict(
+                "Agent task or policy changed; request a fresh price.",
+            ));
+        }
         let pending:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM x402_quotes WHERE agent_id=? AND status IN ('submitted','uncertain'))",[&quote.agent_id],|r|r.get(0))?;
         if pending {
             return Err(ApiError::conflict(
@@ -257,7 +267,7 @@ impl AppState {
                 ))
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
-        let values=rows.into_iter().map(|(payload,status,tx_hash)| { let q:Quote=decode(payload)?; Ok(json!({"quote_id":q.id,"provider":q.merchant.id,"status":if status=="prepared" && q.expires<=Utc::now().timestamp(){"expired"}else{status.as_str()},"expires_at":q.expires,"amount":money(q.offer.amount_units).to_string(),"currency":"USDT","tx_hash":tx_hash})) }).collect::<Result<Vec<Value>>>()?;
+        let values=rows.into_iter().map(|(payload,status,tx_hash)| { let q:Quote=decode(payload)?; let delivery=self.paid_delivery_history(owner,id,&q.id)?; Ok(json!({"quote_id":q.id,"provider":q.merchant.id,"status":if status=="prepared" && q.expires<=Utc::now().timestamp(){"expired"}else{status.as_str()},"expires_at":q.expires,"amount":money(q.offer.amount_units).to_string(),"currency":"USDT","tx_hash":tx_hash,"delivery":delivery})) }).collect::<Result<Vec<Value>>>()?;
         Ok(json!(values))
     }
     fn stored_x402(
@@ -281,6 +291,11 @@ impl AppState {
         self.x402_chain_ready().await?;
         let (agent, wallet) = self.x402_agent_wallet(owner, id).await?;
         let (quote, status, _, _) = self.stored_x402(owner, id, quote_id)?;
+        if !quote.task_hash.is_empty() && quote.task_hash != self.policy(&agent) {
+            return Err(ApiError::conflict(
+                "Agent task or policy changed; request a fresh price.",
+            ));
+        }
         if status != "prepared" {
             return Err(ApiError::conflict(
                 "This quote was already submitted. Reconcile its receipt before another payment.",
@@ -352,10 +367,7 @@ impl AppState {
                 return Err(e);
             }
         };
-        self.store.connect()?.execute(
-            "UPDATE x402_quotes SET tx_hash=? WHERE id=?",
-            params![receipt.transaction, quote_id],
-        )?;
+        self.capture_paid_delivery(owner, id, quote_id, &receipt.transaction, &body, service_ok)?;
         if !receipt.payer.eq_ignore_ascii_case(&wallet) {
             return Err(ApiError::bad(
                 "Merchant receipt belongs to a different payer. Reconcile onchain before retrying.",
@@ -364,8 +376,9 @@ impl AppState {
         let verified = self
             .x402_reconcile(owner, id, quote_id, &receipt.transaction)
             .await?;
+        let delivery = self.paid_delivery_history(owner, id, quote_id)?;
         Ok(
-            json!({"payment":verified,"result":String::from_utf8_lossy(&body),"service_status":if service_ok {"completed"}else{"failed_after_payment"}}),
+            json!({"payment":verified,"result":String::from_utf8_lossy(&body),"service_status":delivery["status"],"delivery":delivery}),
         )
     }
     pub async fn x402_release_expired(
@@ -572,6 +585,7 @@ mod tests {
             authorization,
             day: timestamp / 86400,
             expires: timestamp + 60,
+            task_hash: String::new(),
         }
     }
     #[test]
@@ -698,5 +712,81 @@ mod tests {
         assert!(s
             .claim_x402_quote("owner", &a, "signature", t, 100, 40)
             .is_ok());
+    }
+    #[test]
+    fn changed_task_blocks_submission_before_authorization_is_saved() {
+        let (_d, s) = state();
+        let input=serde_json::from_value(json!({"name":"willow","purpose":"read actual market sources","tools":["x402"],"daily_cap":"1","max_call":"0.1"})).unwrap();
+        let mut agent = s.create_agent("owner", input).unwrap();
+        let t = Utc::now().timestamp();
+        let mut q = quote(&agent.id, 30, t);
+        q.task_hash = s.policy(&agent);
+        s.reserve_x402_quote("owner", &q, 100, 0, t).unwrap();
+        agent.plan.purpose = "an unrelated new task".into();
+        s.store.save_agent(&agent).unwrap();
+        assert!(s
+            .claim_x402_quote("owner", &q, "private authorization", t, 100, 0)
+            .is_err());
+        let (status, signature): (String, Option<String>) = s
+            .store
+            .connect()
+            .unwrap()
+            .query_row(
+                "SELECT status,signature FROM x402_quotes WHERE id=?",
+                [q.id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(status, "prepared");
+        assert!(signature.is_none());
+    }
+    #[test]
+    fn payment_history_keeps_delivery_after_reload_without_exposing_authorization() {
+        let (_d, s) = state();
+        let input=serde_json::from_value(json!({"name":"willow","purpose":"read actual market sources","tools":["x402"],"daily_cap":"1","max_call":"0.1"})).unwrap();
+        let agent = s.create_agent("owner", input).unwrap();
+        let t = Utc::now().timestamp();
+        let mut q = quote(&agent.id, 30, t);
+        q.task_hash = s.policy(&agent);
+        s.reserve_x402_quote("owner", &q, 100, 0, t).unwrap();
+        s.claim_x402_quote("owner", &q, "private authorization", t, 100, 0)
+            .unwrap();
+        let hash = "0x1111111111111111111111111111111111111111111111111111111111111111";
+        s.capture_paid_delivery(
+            "owner",
+            &agent.id,
+            &q.id,
+            hash,
+            br#"{"market":"actual returned data"}"#,
+            true,
+        )
+        .unwrap();
+        let before = s.x402_history("owner", &agent.id).unwrap();
+        assert_eq!(before[0]["delivery"]["status"], "pending_payment");
+        let db = s.store.connect().unwrap();
+        db.execute(
+            "UPDATE x402_quotes SET status='confirmed' WHERE id=?",
+            [&q.id],
+        )
+        .unwrap();
+        db.execute(
+            "INSERT INTO chain_receipts VALUES(?,?,?)",
+            params![hash, q.id, now()],
+        )
+        .unwrap();
+        let reopened = AppState::new((*s.config).clone()).unwrap();
+        let history = reopened.x402_history("owner", &agent.id).unwrap();
+        assert_eq!(history[0]["delivery"]["status"], "completed");
+        assert_eq!(
+            history[0]["delivery"]["data"]["market"],
+            "actual returned data"
+        );
+        assert!(!history.to_string().contains("private authorization"));
+        assert!(!history.to_string().contains("signature"));
+        assert!(reopened.x402_history("intruder", &agent.id).is_err());
+        let mut legacy = serde_json::to_value(&q).unwrap();
+        legacy.as_object_mut().unwrap().remove("task_hash");
+        let decoded: Quote = serde_json::from_value(legacy).unwrap();
+        assert!(decoded.task_hash.is_empty());
     }
 }

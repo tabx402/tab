@@ -36,6 +36,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -56,7 +63,10 @@ export interface paths {
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    /** @description Selected wallet; ownership and current TAB holdings are verified by the server when holder access is enabled */
+                    "X-Tab-Holder-Wallet"?: string;
+                };
                 path?: never;
                 cookie?: never;
             };
@@ -77,6 +87,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -139,6 +156,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -192,6 +216,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -212,7 +243,10 @@ export interface paths {
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    /** @description Selected wallet; ownership and current TAB holdings are verified by the server when holder access is enabled */
+                    "X-Tab-Holder-Wallet"?: string;
+                };
                 path?: never;
                 cookie?: never;
             };
@@ -233,6 +267,212 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid input */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description An integration is not configured or unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/holder-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    wallet?: string;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HolderAccess"];
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Wallet ownership or TAB holding is required */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid input */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description An integration is not configured or unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/holder-access/challenge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["WalletInput"];
+                };
+            };
+            responses: {
+                /** @description Successful response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HolderChallenge"];
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid input */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description An integration is not configured or unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/holder-access/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ProofInput"];
+                };
+            };
+            responses: {
+                /** @description Successful response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["HolderAccess"];
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -287,6 +527,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -356,6 +603,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -407,6 +661,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -472,6 +733,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -521,6 +789,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -579,6 +854,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -648,6 +930,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -701,6 +990,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -763,6 +1059,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -801,6 +1104,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -868,6 +1178,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -926,6 +1243,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -942,6 +1266,136 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/jobs/{id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["JobRun"];
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid input */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description An integration is not configured or unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/account/jobs/{id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["JobRun"][];
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid input */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description An integration is not configured or unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -973,6 +1427,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1017,6 +1478,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1076,6 +1544,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -1096,7 +1571,10 @@ export interface paths {
         post: {
             parameters: {
                 query?: never;
-                header?: never;
+                header?: {
+                    /** @description Selected wallet; ownership and current TAB holdings are verified by the server when holder access is enabled */
+                    "X-Tab-Holder-Wallet"?: string;
+                };
                 path?: never;
                 cookie?: never;
             };
@@ -1117,6 +1595,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1188,6 +1673,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -1233,6 +1725,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1300,6 +1799,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -1349,6 +1855,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1405,6 +1918,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1468,6 +1988,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -1519,6 +2046,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1588,6 +2122,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -1642,6 +2183,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -1685,6 +2233,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1752,6 +2307,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -1808,6 +2370,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -1844,6 +2413,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -1910,6 +2486,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -1963,6 +2546,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2031,6 +2621,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -2090,6 +2687,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -2141,6 +2745,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2210,6 +2821,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -2250,7 +2868,11 @@ export interface paths {
                 };
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RunInput"];
+                };
+            };
             responses: {
                 /** @description Successful response */
                 200: {
@@ -2263,6 +2885,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2319,6 +2948,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2388,6 +3024,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -2446,6 +3089,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -2497,6 +3147,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2566,6 +3223,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -2615,6 +3279,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2673,6 +3344,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2739,6 +3417,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -2800,6 +3485,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -2852,6 +3544,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -2917,6 +3616,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -2968,6 +3674,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3028,6 +3741,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -3143,6 +3863,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -3207,6 +3934,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -3265,6 +3999,13 @@ export interface paths {
                     };
                     content?: never;
                 };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
                 /** @description Invalid input */
                 422: {
                     headers: {
@@ -3287,6 +4028,136 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/agent/jobs/{id}/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["JobRun"];
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid input */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description An integration is not configured or unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/agent/jobs/{id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Successful response */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["JobRun"][];
+                    };
+                };
+                /** @description Authentication required */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Invalid input */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description An integration is not configured or unavailable */
+                503: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/agent/run": {
         parameters: {
             query?: never;
@@ -3303,7 +4174,11 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody?: never;
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RunInput"];
+                };
+            };
             responses: {
                 /** @description Successful response */
                 200: {
@@ -3316,6 +4191,13 @@ export interface paths {
                 };
                 /** @description Authentication required */
                 401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description The account, wallet, or current TAB holding does not authorize this action */
+                403: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -4522,62 +5404,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/overview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Successful response */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["PublicData"];
-                    };
-                };
-                /** @description Authentication required */
-                401: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description Invalid input */
-                422: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-                /** @description An integration is not configured or unavailable */
-                503: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/providers": {
         parameters: {
             query?: never;
@@ -4988,24 +5814,6 @@ export interface components {
             timestamp: string;
             tx_hash?: string | null;
         };
-        AgentExample: {
-            backer: string;
-            id: string;
-            /** Format: double */
-            limit: number;
-            name: string;
-            /** Format: double */
-            outstanding: number;
-            providers: string[];
-            purpose: string;
-            /** Format: double */
-            repaid: number;
-            /** Format: int64 */
-            repayments: number;
-            /** Format: double */
-            spent: number;
-            status: string;
-        };
         AgentInput: {
             cadence?: string;
             daily_cap: string;
@@ -5210,6 +6018,30 @@ export interface components {
             financial_actions_enabled: boolean;
             status: string;
         };
+        HolderAccess: {
+            balance_units?: string | null;
+            /** Format: int64 */
+            chain_id: number;
+            checked_at?: string | null;
+            /** Format: int32 */
+            decimals?: number | null;
+            eligible: boolean;
+            enforced: boolean;
+            message: string;
+            minimum_units: string;
+            recovery_allowed: boolean;
+            status: string;
+            token_address?: string | null;
+            wallet?: string | null;
+        };
+        HolderChallenge: {
+            /** Format: int64 */
+            chain_id: number;
+            expires_at: string;
+            id: string;
+            message: string;
+            wallet: string;
+        };
         Job: components["schemas"]["JobInput"] & {
             available: string;
             bond_status?: string;
@@ -5300,6 +6132,17 @@ export interface components {
             service_key: string;
             tool: string;
         };
+        JobRun: {
+            agent_id: string;
+            finished_at?: string | null;
+            id: string;
+            job_id: string;
+            output: {
+                [key: string]: unknown;
+            };
+            started_at: string;
+            status: string;
+        };
         JobSystem: {
             /** Format: int64 */
             chain_id: number;
@@ -5316,6 +6159,10 @@ export interface components {
         };
         PauseInput: {
             paused: boolean;
+        };
+        ProofInput: {
+            id: string;
+            signature: string;
         };
         Provider: {
             category: string;
@@ -5353,6 +6200,7 @@ export interface components {
             gas_sponsorship_enabled: boolean;
             gas_sponsorship_message: string;
             gas_sponsorship_status: string;
+            holder_access_enabled: boolean;
             network: string;
             official_tab_address?: string | null;
             payments_enabled: boolean;
@@ -5360,17 +6208,6 @@ export interface components {
             usdt_address: string;
             /** Format: int32 */
             usdt_decimals: number;
-        };
-        PublicData: {
-            agents: components["schemas"]["AgentExample"][];
-            mode: string;
-            receipts: components["schemas"]["Receipt"][];
-            series: {
-                date: string;
-                repayment: number;
-                spend: number;
-            }[];
-            summary: components["schemas"]["Summary"];
         };
         PublicJob: {
             acceptance: string;
@@ -5430,17 +6267,6 @@ export interface components {
         PurchaseSignature: {
             signature: string;
         };
-        Receipt: {
-            agent: string;
-            /** Format: double */
-            amount: number;
-            description: string;
-            example: boolean;
-            id: string;
-            kind: string;
-            provider?: string | null;
-            timestamp: string;
-        };
         RegisteredAgent: {
             daily_cap: string;
             funding_status: string;
@@ -5490,6 +6316,9 @@ export interface components {
             hash: string;
             label: string;
             status: string;
+        };
+        RunInput: {
+            quote_id?: string | null;
         };
         RuntimeAgent: components["schemas"]["AgentInput"] & {
             created_at: string;
@@ -5543,18 +6372,6 @@ export interface components {
             usdt: string;
             wallet: string;
         };
-        Summary: {
-            /** Format: int64 */
-            agents: number;
-            /** Format: double */
-            credit_limit: number;
-            /** Format: double */
-            outstanding: number;
-            /** Format: double */
-            repaid: number;
-            /** Format: double */
-            spent: number;
-        };
         TokenMetadata: {
             address: string;
             /** Format: int64 */
@@ -5583,6 +6400,9 @@ export interface components {
         };
         WalletChallenge: {
             sponsored?: boolean | null;
+            wallet: string;
+        };
+        WalletInput: {
             wallet: string;
         };
         WalletProof: {

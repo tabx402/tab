@@ -12,26 +12,77 @@ use std::collections::BTreeSet;
 impl AppState {
     pub async fn secured_assets(&self) -> Result<Value> {
         if self.bnb.manifest()?["credit_mode"] != "collateralized" {
-            let assets = self.backing_assets().as_array().cloned().unwrap_or_default().into_iter().map(|mut asset| {
-                asset["borrowing_enabled"] = json!(false); asset["borrowing_status"] = json!("unsupported_legacy"); asset["price_usdt"] = Value::Null; asset["risk"] = Value::Null; asset
-            }).collect::<Vec<_>>();
-            return Ok(json!({"chain_id":56,"currency":"USDT","status":"unsupported_legacy","supported":false,"assets":assets,"stock_loans":self.finance_system().await.modules.stock_loans}));
+            let assets = self
+                .backing_assets()
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|mut asset| {
+                    asset["borrowing_enabled"] = json!(false);
+                    asset["borrowing_status"] = json!("unsupported_legacy");
+                    asset["price_usdt"] = Value::Null;
+                    asset["risk"] = Value::Null;
+                    asset
+                })
+                .collect::<Vec<_>>();
+            return Ok(
+                json!({"chain_id":56,"currency":"USDT","status":"unsupported_legacy","supported":false,"assets":assets,"stock_loans":self.finance_system().await.modules.stock_loans}),
+            );
         }
         let live = self.bnb.deployed().await;
         let mut assets = vec![];
-        for mut asset in self.backing_assets().as_array().cloned().unwrap_or_default() {
-            let Some(token) = asset["address"].as_str().map(str::to_owned) else { continue; };
-            let risk = if live { self.bnb.view("backing","collateralAssets",vec![bnb::addr(&token)?]).await.ok() } else { None };
-            let configured = risk.as_ref().is_some_and(|r|bnb::number(&r["ltvBps"]).unwrap_or(0)>0);
-            let enabled = configured && risk.as_ref().is_some_and(|r|r["paused"]!=true);
-            let price = if enabled { self.bnb.view("backing","collateralPrice",vec![bnb::addr(&token)?]).await.ok().and_then(|v|bnb::number(&v).ok()) } else { None };
+        for mut asset in self
+            .backing_assets()
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+        {
+            let Some(token) = asset["address"].as_str().map(str::to_owned) else {
+                continue;
+            };
+            let risk = if live {
+                self.bnb
+                    .view("backing", "collateralAssets", vec![bnb::addr(&token)?])
+                    .await
+                    .ok()
+            } else {
+                None
+            };
+            let configured = risk
+                .as_ref()
+                .is_some_and(|r| bnb::number(&r["ltvBps"]).unwrap_or(0) > 0);
+            let enabled = configured && risk.as_ref().is_some_and(|r| r["paused"] != true);
+            let price = if enabled {
+                self.bnb
+                    .view("backing", "collateralPrice", vec![bnb::addr(&token)?])
+                    .await
+                    .ok()
+                    .and_then(|v| bnb::number(&v).ok())
+            } else {
+                None
+            };
             asset["borrowing_enabled"] = json!(enabled && price.is_some());
-            asset["borrowing_status"] = json!(if !live {"contracts_unavailable"} else if risk.is_none() {"upgrade_required"} else if !configured {"awaiting_token_oracle"} else if !enabled {"borrowing_paused"} else if price.is_none() {"oracle_unavailable"} else {"ready"});
-            asset["price_usdt"] = json!(price.map(|v|money(v).to_string()));
+            asset["borrowing_status"] = json!(if !live {
+                "contracts_unavailable"
+            } else if risk.is_none() {
+                "upgrade_required"
+            } else if !configured {
+                "awaiting_token_oracle"
+            } else if !enabled {
+                "borrowing_paused"
+            } else if price.is_none() {
+                "oracle_unavailable"
+            } else {
+                "ready"
+            });
+            asset["price_usdt"] = json!(price.map(|v| money(v).to_string()));
             asset["risk"] = json!(risk);
             assets.push(asset);
         }
-        Ok(json!({"chain_id":56,"currency":"USDT","assets":assets,"interest_bps":0,"collateral_scope":"separate pledge per credit agreement"}))
+        Ok(
+            json!({"chain_id":56,"currency":"USDT","assets":assets,"interest_bps":0,"collateral_scope":"separate pledge per credit agreement"}),
+        )
     }
     pub fn wallet_actions(&self, owner: &str, id: &str) -> Result<Vec<TransactionIntent>> {
         self.store.agent(owner, id)?;
@@ -104,27 +155,72 @@ impl AppState {
                 .map(|a| a.id);
             let mut row = json!({"id":credit,"agent_id":local,"onchain_agent_id":c["agent"],"lender":c["lender"],"borrower":c["borrower"],"signer":c["signer"],"role":if borrower{"borrower"}else{"lender"},"expires_at":expires,"tools":TOOLS.iter().enumerate().filter(|(i,_)|tools&(1<<i)!=0).map(|(_,t)|*t).collect::<Vec<_>>(),"recipients":c["recipients"],"accepted":accepted,"closed":closed,"status":if closed{"closed"}else if expired{"expired"}else if accepted{"active"}else{"awaiting_acceptance"},"interest_bps":0,"secured":false,"actions":{"accept":borrower&&!accepted&&!closed&&!expired,"repay":borrower&&outstanding>0,"withdraw":lender&&available>0,"close":!closed,"spend":borrower&&accepted&&!closed&&!expired&&available>0&&agent.status=="ready"}});
             if self.bnb.manifest()?["credit_mode"] == "collateralized" {
-            let position = self.bnb.view("backing", "collateralPositions", vec![bnb::bytes32(&credit)?]).await?;
-            let collateral_token = position["token"].as_str().ok_or_else(ApiError::internal)?;
-            let risk = self.bnb.view("backing", "collateralAssets",vec![bnb::addr(collateral_token)?]).await?;
-            let decimals = bnb::number(&risk["decimals"])? as u8;
-            let pledged = bnb::number(&position["amount"])?;
-            let valuation = self.bnb.view("backing","collateralValue",vec![bnb::bytes32(&credit)?]).await.ok().and_then(|v|bnb::number(&v).ok());
-            let power = valuation.and_then(|v|v.checked_mul(bnb::number(&risk["ltvBps"]).unwrap_or(0))).map(|v|v/10_000);
-            let remaining_cap = bnb::number(&risk["debtCap"])?.saturating_sub(bnb::number(&risk["debt"])?);
-            let health = valuation.filter(|_|outstanding>0).map(|v|rust_decimal::Decimal::from_i128_with_scale(v as i128,18) * rust_decimal::Decimal::from(bnb::number(&risk["liquidationBps"]).unwrap_or(0) as u64) / rust_decimal::Decimal::from(10_000u64) / money(outstanding));
-            row["secured"] = json!(true);
-            row["collateral"] = json!({"token":collateral_token,"decimals":decimals,"amount":rust_decimal::Decimal::from_i128_with_scale(pledged as i128,decimals.into()).normalize().to_string(),"value_usdt":valuation.map(|v|money(v).to_string()),"borrowing_power_usdt":power.map(|v|money(v).to_string()),"available_borrowing_usdt":power.map(|v|money(v.saturating_sub(outstanding).min(available).min(remaining_cap)).to_string()),"health_factor":health.map(|v|v.normalize().to_string()),"oracle_status":if valuation.is_some(){"verified"}else{"unavailable"},"ltv_bps":risk["ltvBps"],"liquidation_bps":risk["liquidationBps"],"bonus_bps":risk["bonusBps"],"paused":risk["paused"]});
-            row["actions"]["pledge"] = json!(borrower);
-            row["actions"]["withdraw_collateral"] = json!(borrower && pledged>0 && (outstanding==0 || power.is_some_and(|v|v>outstanding)));
-            row["actions"]["spend"] = json!(row["actions"]["spend"]==true && risk["paused"]!=true && remaining_cap>0 && power.is_some_and(|v|v>outstanding));
-            row["actions"]["liquidate"] = json!(outstanding>0 && valuation.is_some() && (health.is_some_and(|v|v<rust_decimal::Decimal::ONE) || chrono::Utc::now().timestamp() as u128>expires+86400));
+                let position = self
+                    .bnb
+                    .view(
+                        "backing",
+                        "collateralPositions",
+                        vec![bnb::bytes32(&credit)?],
+                    )
+                    .await?;
+                let collateral_token = position["token"].as_str().ok_or_else(ApiError::internal)?;
+                let risk = self
+                    .bnb
+                    .view(
+                        "backing",
+                        "collateralAssets",
+                        vec![bnb::addr(collateral_token)?],
+                    )
+                    .await?;
+                let decimals = bnb::number(&risk["decimals"])? as u8;
+                let pledged = bnb::number(&position["amount"])?;
+                let valuation = self
+                    .bnb
+                    .view("backing", "collateralValue", vec![bnb::bytes32(&credit)?])
+                    .await
+                    .ok()
+                    .and_then(|v| bnb::number(&v).ok());
+                let power = valuation
+                    .and_then(|v| v.checked_mul(bnb::number(&risk["ltvBps"]).unwrap_or(0)))
+                    .map(|v| v / 10_000);
+                let remaining_cap =
+                    bnb::number(&risk["debtCap"])?.saturating_sub(bnb::number(&risk["debt"])?);
+                let health = valuation.filter(|_| outstanding > 0).map(|v| {
+                    rust_decimal::Decimal::from_i128_with_scale(v as i128, 18)
+                        * rust_decimal::Decimal::from(
+                            bnb::number(&risk["liquidationBps"]).unwrap_or(0) as u64,
+                        )
+                        / rust_decimal::Decimal::from(10_000u64)
+                        / money(outstanding)
+                });
+                row["secured"] = json!(true);
+                row["collateral"] = json!({"token":collateral_token,"decimals":decimals,"amount":rust_decimal::Decimal::from_i128_with_scale(pledged as i128,decimals.into()).normalize().to_string(),"value_usdt":valuation.map(|v|money(v).to_string()),"borrowing_power_usdt":power.map(|v|money(v).to_string()),"available_borrowing_usdt":power.map(|v|money(v.saturating_sub(outstanding).min(available).min(remaining_cap)).to_string()),"health_factor":health.map(|v|v.normalize().to_string()),"oracle_status":if valuation.is_some(){"verified"}else{"unavailable"},"ltv_bps":risk["ltvBps"],"liquidation_bps":risk["liquidationBps"],"bonus_bps":risk["bonusBps"],"paused":risk["paused"]});
+                row["actions"]["pledge"] = json!(borrower);
+                row["actions"]["withdraw_collateral"] = json!(
+                    borrower
+                        && pledged > 0
+                        && (outstanding == 0 || power.is_some_and(|v| v > outstanding))
+                );
+                row["actions"]["spend"] = json!(
+                    row["actions"]["spend"] == true
+                        && risk["paused"] != true
+                        && remaining_cap > 0
+                        && power.is_some_and(|v| v > outstanding)
+                );
+                row["actions"]["liquidate"] = json!(
+                    outstanding > 0
+                        && valuation.is_some()
+                        && (health.is_some_and(|v| v < rust_decimal::Decimal::ONE)
+                            || chrono::Utc::now().timestamp() as u128 > expires + 86400)
+                );
             } else {
                 // Older agreements retain recovery access during an upgrade.
                 row["actions"]["spend"] = json!(false);
                 row["actions"]["accept"] = json!(false);
                 row["security_status"] = json!("legacy_unsecured_recovery_only");
-                for action in ["pledge", "withdraw_collateral", "liquidate"] { row["actions"][action] = json!(false); }
+                for action in ["pledge", "withdraw_collateral", "liquidate"] {
+                    row["actions"][action] = json!(false);
+                }
             }
             for (field, key) in [
                 ("funded", "funded"),

@@ -29,6 +29,8 @@ import { RunReceipt } from "./RunReceipt";
 import { OnboardingCosts } from "./OnboardingCosts";
 import { useSearchParams } from "react-router-dom";
 import { isAddress } from "viem";
+import { HolderAccess } from "./HolderAccess";
+import { HolderAccessContext, holderCreationOptions, useHolderAccess } from "../lib/holder-access";
 import { AgentWizard } from "./AgentWizard";
 import { AgentAccessKey } from "./AgentAccessKey";
 import { AgentPayments } from "./AgentPayments";
@@ -73,11 +75,15 @@ function AgentAccount({ config }: { config: Config }) {
   const [prepared, setPrepared] = useState<RuntimeAgent | null>(null);
   const [legacy, setLegacy] = useState<AgentPlan[]>([]),
     [legacySelection, setLegacySelection] = useState<AgentPlan | null>(null);
+  const connectedAddress = user?.wallet?.address || wallets.find(w => w.walletClientType === "privy")?.address || (wallets.length === 1 ? wallets[0].address : null);
+  const accessWallet = (!creating && selected?.wallet) || connectedAddress;
+  const accessWalletRef = useRef(accessWallet); accessWalletRef.current = accessWallet;
   const api = useCallback(
     async <T,>(path: string, options: RequestInit = {}) =>
-      request<T>(path, options, await getAccessToken()),
+      request<T>(path, holderCreationOptions(path, options, accessWalletRef.current), await getAccessToken()),
     [getAccessToken],
   );
+  const access = useHolderAccess(api, authenticated ? user?.id || null : null, accessWallet);
   const reload = useCallback(async () => {
     await api("/account/profile", {method: "POST", body: "{}"});
     const [a, p] = await Promise.all([
@@ -187,6 +193,7 @@ function AgentAccount({ config }: { config: Config }) {
   async function register(agent: RuntimeAgent) {
     if(registration)throw Error("Resolve the pending registration before signing another.");
     const wallet = await ownerWallet(agent.wallet ?? undefined);
+    await access.require("register", undefined, wallet.address);
     if (!selfPay) {
       const { result, agent: registered } = await startSponsoredRegistration(api, agent, wallet, config.gas_sponsorship_enabled, saveRegistration);
       if (registered) return acceptRegistration(registered);
@@ -202,6 +209,7 @@ function AgentAccount({ config }: { config: Config }) {
     validateTransaction(challenge.transaction);
     const client = await bnbWalletClient(wallet, agent.wallet ?? undefined);
     const signature = await client.signMessage({ message: challenge.message });
+    await access.require("register", undefined, wallet.address);
     const unsigned:DirectRegistration={id:agent.id,wallet:wallet.address,signature,tx_hash:"",transaction:challenge.transaction};
     rememberRegistration(registrationKey,unsigned);setRegistration(unsigned);
     let tx_hash:string;
@@ -216,6 +224,7 @@ function AgentAccount({ config }: { config: Config }) {
     setPending(true);
     try {
       if (registration) return await finishRegistration(registration);
+      await access.require("create_agent");
       let agent = prepared;
       if (!agent) {
         if (!user?.id) throw Error("Sign in before creating an agent.");
@@ -247,6 +256,7 @@ function AgentAccount({ config }: { config: Config }) {
   }
   async function run(agent: RuntimeAgent) {
     await withBusy(async () => {
+      await access.require("run", undefined, agent.wallet || undefined);
       await api<AgentRun>(`/account/runtime/${agent.id}/run`, {
         method: "POST",
       });
@@ -256,6 +266,7 @@ function AgentAccount({ config }: { config: Config }) {
   }
   async function pause(agent: RuntimeAgent) {
     await withBusy(async () => {
+      await access.require(agent.status === "paused" ? "resume_runs" : "pause_runs", undefined, agent.wallet || undefined);
       const a = await api<RuntimeAgent>(`/account/runtime/${agent.id}/pause`, {
         method: "POST",
         body: JSON.stringify({ paused: agent.status !== "paused" }),
@@ -270,7 +281,7 @@ function AgentAccount({ config }: { config: Config }) {
     setTimeout(() => setCopied(false), 1800);
   }
   return (
-    <div className="account-flow">
+    <HolderAccessContext.Provider value={access}><div className="account-flow">
       <section className="page-intro account-heading">
         <div>
           <h1>{creating ? "create your agent." : "your agents."}</h1>
@@ -301,6 +312,7 @@ function AgentAccount({ config }: { config: Config }) {
         </section>
       ) : (
         <>
+          <HolderAccess access={access} connect={() => ownerWallet(access.wallet || undefined)} />
           {registration && <RegistrationRecovery registration={registration} busy={pending} onChange={saveRegistration}
             onCheck={() => void withBusy(async () => { await finishRegistration(registration); })}
             onFailed={() => void withBusy(async () => {
@@ -422,7 +434,7 @@ function AgentAccount({ config }: { config: Config }) {
                     <label className="checkbox-row"><input type="checkbox" checked={selfPay} disabled={pending || !!registration} onChange={event => setSelfPay(event.target.checked)} />pay registration BNB gas from my wallet</label>
                     <button
                       className="primary"
-                      disabled={pending || config.contracts_status !== "live"}
+                      disabled={pending || config.contracts_status !== "live" || !access.allows("register")}
                       onClick={() =>
                         withBusy(async () => {
                           await register(selected);
@@ -432,13 +444,19 @@ function AgentAccount({ config }: { config: Config }) {
                       register agent
                       <ArrowUpRight size={14} />
                     </button>
+                    <button className="text-link" disabled={pending || !!registration} onClick={() => void withBusy(async () => {
+                      const result = await sponsorStatus(api, selected.id);
+                      const item = sponsoredResult(result, selected.id, selected.wallet || "", saveRegistration);
+                      if (item) await acceptRegistration(item);
+                      else if (result.retryable) throw Error(result.message || "No sponsored registration is pending for this agent.");
+                    })}>check existing registration</button>
                     </>
                   ) : (
                     <>
                       <div className="agent-action-row">
                         <button
                           className="primary"
-                          disabled={pending || selected.status !== "ready"}
+                          disabled={pending || selected.status !== "ready" || !access.allows("run")}
                           onClick={() => run(selected)}
                         >
                           <Play size={14} />
@@ -446,7 +464,7 @@ function AgentAccount({ config }: { config: Config }) {
                         </button>
                         <button
                           className="outline"
-                          disabled={pending}
+                          disabled={pending || !access.allows(selected.status === "paused" ? "resume_runs" : "pause_runs")}
                           onClick={() => pause(selected)}
                         >
                           {selected.status === "paused" ? (
@@ -514,7 +532,7 @@ function AgentAccount({ config }: { config: Config }) {
                         <details className="account-disclosure" id="account-credit"><summary>secured USDT credit</summary><AgentCredit initialTarget={targetAgent} key={`credit:${selected.id}`} agent={selected} owned={agents} api={api} live={config.contracts_status === "live"} send={sendTransactions} changed={()=>refreshSelected(selected.id)} /></details>
                         <details className="account-disclosure" id="account-backing"><summary>backing, tokens and wallet actions</summary><AgentWalletActions initialTarget={targetAgent} initialAsset={initialAsset === "native" ? undefined : initialAsset} initialAction={accountSection === "backing" ? initialAsset === "native" ? "back_bnb" : "back" : undefined} key={`wallet:${selected.id}`} agent={selected} owned={agents} api={api} live={config.contracts_status === "live"} send={sendTransactions} changed={()=>refreshSelected(selected.id)} /></details>
                       </>}
-                      {selected.registry_id && selected.wallet && <div id="account-jobs"><AgentJobs agent={selected} owned={agents} api={api} sendTransaction={async (intent) => {
+                      {selected.registry_id && selected.wallet && <div id="account-jobs"><AgentJobs key={selected.id} agent={selected} owned={agents} api={api} sendTransaction={async (intent) => {
                         if (intent.chain_id !== BNB_CHAIN_ID) throw Error("The transaction network differs from the app configuration.");
                         return sendTransactions(intent.sender, intent.transactions?.length ? intent.transactions : [{ to: intent.to, data: intent.data, value: intent.value, chainId: intent.chain_id }]);
                       }} /></div>}
@@ -539,7 +557,7 @@ function AgentAccount({ config }: { config: Config }) {
           )}
         </>
       )}
-    </div>
+    </div></HolderAccessContext.Provider>
   );
 }
 export default function Account({

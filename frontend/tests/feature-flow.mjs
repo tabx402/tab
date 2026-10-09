@@ -29,21 +29,21 @@ try {
   await expect(page.getByTestId('agent-wallet-preview')).toHaveCount(0);
   assert.equal(snapshots, 0, 'Invalid address must not reach RPC.');
   await page.getByLabel('wallet address', { exact: true }).fill('0x1111111111111111111111111111111111111111');
-  await page.getByRole('button', { name: 'preview wallet balances', exact: true }).click();
+  await page.getByRole('button', { name: 'read wallet balances', exact: true }).click();
   await expect(page.getByText('The wallet snapshot could not be verified. Try again.', { exact: true })).toBeVisible();
   await expect(page.locator('[data-testid=agent-wallet-preview] [aria-live=polite]')).toHaveCount(0);
   wrongNetwork = false;
-  await page.getByRole('button', { name: 'preview wallet balances', exact: true }).click();
+  await page.getByRole('button', { name: 'read wallet balances', exact: true }).click();
   await expect(page.getByTestId('agent-wallet-preview')).toContainText('12,345,678,901,234,567,890.000000000000000001 USDT');
   await expect(page.getByTestId('agent-wallet-preview')).toContainText('block 123,456');
   for (block of ['-1', '1.5', '18446744073709551616', 123456]) {
-    await page.getByRole('button', { name: 'preview wallet balances', exact: true }).click();
+    await page.getByRole('button', { name: 'read wallet balances', exact: true }).click();
     await expect(page.getByText('The wallet snapshot could not be verified. Try again.', { exact: true })).toBeVisible();
     await expect(page.locator('[data-testid=agent-wallet-preview] [aria-live=polite]')).toHaveCount(0);
   }
   block = '123456';
   fail = true;
-  await page.getByRole('button', { name: 'preview wallet balances', exact: true }).click();
+  await page.getByRole('button', { name: 'read wallet balances', exact: true }).click();
   await expect(page.getByText('Public RPC is temporarily unavailable.', { exact: true })).toBeVisible();
   await expect(page.locator('[data-testid=agent-wallet-preview] [aria-live=polite]')).toHaveCount(0);
   await expect(page.locator('.run-receipt-top .flow-badge')).toHaveText('some work returned');
@@ -69,10 +69,19 @@ try {
     await page.setViewportSize({ width, height: 844 });
     await page.getByRole('tab', { name: 'lend USDT', exact: true }).click();
     fail = false;
-    await page.getByRole('button', { name: 'preview wallet balances', exact: true }).click();
+    await page.getByRole('button', { name: 'read wallet balances', exact: true }).click();
     await expect(page.locator('[data-testid=agent-wallet-preview] [aria-live=polite]')).toBeVisible();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false, `${width}px layout overflowed`);
   }
   assert.deepEqual(errors, []);
-  console.log('Integrated wallet preview address/network validation, exact balances, RPC failure states, honest partial/cost/approval receipts, provider availability, finance deployment gates and 320/390/768px layouts passed.');
+  await page.evaluate(()=>localStorage.setItem('qa:paid-data-reuse','true'));
+  await page.reload({waitUntil:'networkidle'});
+  await expect(page.getByText('0 USDT spent in this run · previously purchased data reused',{exact:true})).toBeVisible();
+  await expect(page.getByText('Original purchase: 2 USDT.',{exact:true})).toBeVisible();
+  await expect(page.getByText('2 USDT settled',{exact:true})).toHaveCount(0);
+  await expect(page.locator('.receipt-paid-data')).toContainText('Saved paid liquidity data.');
+  await expect(page.getByRole('link',{name:'view original payment',exact:true})).toHaveAttribute('href','https://bscscan.com/tx/'+'0x'+'a'.repeat(64));
+  await expect(page.getByText('Stored data reused. This run did not authorize another payment.',{exact:true})).toBeVisible();
+  assert.deepEqual(errors, []);
+  console.log('Integrated live wallet read address/network validation, exact balances, RPC failure states, honest partial/cost/approval receipts, provider availability, finance deployment gates and 320/390/768px layouts passed.');
 } finally { await browser.close(); }

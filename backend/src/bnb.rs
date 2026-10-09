@@ -363,12 +363,22 @@ impl Bnb {
         if result.len() == 1 {
             return Ok(token_json(&result[0], &function["outputs"][0]));
         }
-        if function["outputs"].as_array().is_some_and(|outputs| outputs.iter().all(|output|
-            output["name"].as_str().is_some_and(|name| !name.is_empty()))) {
-            let values: serde_json::Map<String, Value> = result.iter().enumerate().map(|(i, token)| {
-                let output = &function["outputs"][i];
-                (output["name"].as_str().unwrap().to_owned(), token_json(token, output))
-            }).collect();
+        if function["outputs"].as_array().is_some_and(|outputs| {
+            outputs
+                .iter()
+                .all(|output| output["name"].as_str().is_some_and(|name| !name.is_empty()))
+        }) {
+            let values: serde_json::Map<String, Value> = result
+                .iter()
+                .enumerate()
+                .map(|(i, token)| {
+                    let output = &function["outputs"][i];
+                    (
+                        output["name"].as_str().unwrap().to_owned(),
+                        token_json(token, output),
+                    )
+                })
+                .collect();
             return Ok(Value::Object(values));
         }
         Ok(json!(result
@@ -378,12 +388,21 @@ impl Bnb {
             .collect::<Vec<_>>()))
     }
     pub async fn erc20(&self, token: &str, signature: &str, args: Vec<Token>) -> Result<U256> {
+        self.erc20_at(token, signature, args, "latest").await
+    }
+    pub async fn erc20_at(
+        &self,
+        token: &str,
+        signature: &str,
+        args: Vec<Token>,
+        block: &str,
+    ) -> Result<U256> {
         let mut data = Keccak256::digest(signature.as_bytes())[..4].to_vec();
         data.extend(ethabi::encode(&args));
         let v = self
             .rpc(
                 "eth_call",
-                json!([{"to":address(token)?,"data":format!("0x{}",hex::encode(data))},"latest"]),
+                json!([{"to":address(token)?,"data":format!("0x{}",hex::encode(data))},block]),
             )
             .await?;
         let raw = v
@@ -412,17 +431,27 @@ impl Bnb {
         Ok((number(&json!(value.to_string()))?, decimals))
     }
     pub async fn balances(&self, wallet: &str) -> Result<Value> {
+        self.balances_at(wallet, "latest").await
+    }
+    pub async fn balances_at(&self, wallet: &str, block: &str) -> Result<Value> {
         self.require_network().await?;
         let wallet = address(wallet)?;
-        let bnb = number(
-            &self
-                .rpc("eth_getBalance", json!([wallet, "latest"]))
-                .await?,
-        )?;
-        let (tokens, decimals) = self.token_balance(&wallet, &self.config.usdt).await?;
-        if decimals != 18 {
+        let bnb = number(&self.rpc("eth_getBalance", json!([wallet, block])).await?)?;
+        let decimals = self
+            .erc20_at(&self.config.usdt, "decimals()", vec![], block)
+            .await?;
+        if decimals != U256::from(18) {
             return Err(ApiError::unavailable("Unexpected USDT precision."));
         }
+        let tokens = self
+            .erc20_at(
+                &self.config.usdt,
+                "balanceOf(address)",
+                vec![addr(&wallet)?],
+                block,
+            )
+            .await?;
+        let tokens = number(&json!(tokens.to_string()))?;
         Ok(
             json!({"wallet":wallet,"bnb":crate::models::money(bnb).to_string(),"usdt":crate::models::money(tokens).to_string()}),
         )
@@ -475,8 +504,15 @@ impl Bnb {
             return Ok(false);
         }
         if let Some(previous) = doc["previous_protocol"].as_str() {
-            if self.view("protocol", "legacyProtocol", vec![]).await?.as_str() != Some(previous) {
-                return Err(ApiError::unavailable("Migration registry differs from the deployment manifest."));
+            if self
+                .view("protocol", "legacyProtocol", vec![])
+                .await?
+                .as_str()
+                != Some(previous)
+            {
+                return Err(ApiError::unavailable(
+                    "Migration registry differs from the deployment manifest.",
+                ));
             }
         }
         for module in ["backing", "economics"] {

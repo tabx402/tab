@@ -198,6 +198,7 @@ contract TabStockLending is TabUSDTLiquidity {
         external
         nonReentrant
     {
+        _requireTabHolder(msg.sender);
         CollateralConfig memory c = configs[token];
         if (
             paused || !c.enabled || id == 0 || loans[id].borrower != address(0) || collateralAmount == 0

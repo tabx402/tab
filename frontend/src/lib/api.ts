@@ -1,8 +1,5 @@
 import type { components } from "./api-schema";
-export type PublicData = components["schemas"]["PublicData"];
-export type Agent = components["schemas"]["AgentExample"];
 export type Provider = components["schemas"]["Provider"];
-export type Receipt = components["schemas"]["Receipt"];
 export type AgentPlan = components["schemas"]["AgentPlan"];
 export type AgentPlanInput = components["schemas"]["AgentPlanInput"];
 export type Config = components["schemas"]["PublicConfig"];

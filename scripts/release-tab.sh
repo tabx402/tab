@@ -32,6 +32,7 @@ check_api() {
   local origin=$1
   curl --fail --silent --show-error --connect-timeout 10 --max-time 30 --retry 4 --retry-connrefused --retry-delay 1 "$origin/api/health" | /usr/bin/python3 -c 'import json,sys; v=json.load(sys.stdin); assert v.get("status")=="ok" and v.get("backend")=="rust"' || return 1
   curl --fail --silent --show-error --connect-timeout 10 --max-time 30 "$origin/api/config" | /usr/bin/python3 -c 'import json,sys; v=json.load(sys.stdin); assert v.get("backend")=="rust" and v.get("chain_id")==56 and v.get("usdt_address", "").lower()=="0x55d398326f99059ff775485246999027b3197955" and v.get("usdt_decimals")==18 and v.get("contracts_status")=="live" and v.get("financial_actions_enabled") is True' || return 1
+  curl --fail --silent --show-error --connect-timeout 10 --max-time 30 "$origin/api/config" | /usr/bin/python3 -c 'import json,sys; v=json.load(sys.stdin); m=json.load(open(sys.argv[1])); assert v.get("official_tab_address")==m.get("official_tab_address"); assert v.get("holder_access_enabled",False) is m.get("holder_access_enabled",False)' "$release/contracts/deployments/bnb-56.json" || return 1
 }
 check_public_assets() {
   local asset expected actual
@@ -80,7 +81,6 @@ TAB_PORT=4297
 TAB_DATABASE=/home/ubuntu/apps/tabagents/backend/data/tab-bnb56.sqlite
 TAB_BNB_CHAIN_ID=56
 TAB_BNB_SPONSOR_ADDRESS=0xA99Cf06fCdE993a6d2FaA73A2c82d67980Fd0416
-TAB_OFFICIAL_TOKEN=
 TAB_INFERENCE_DAILY_MICROS=100000
 TAB_BNB_MANIFEST=/home/ubuntu/apps/tabagents/current-api/contracts/deployments/bnb-56.json
 TAB_JOB_MERCHANTS=/home/ubuntu/apps/tabagents/current-api/backend/config/job-merchants-bnb.json
@@ -93,8 +93,18 @@ m = json.loads((root / "contracts/deployments/bnb-56.json").read_text())
 a = m["contracts"]["protocol"]["address"]
 if m.get("chain_id") != 56 or not re.fullmatch(r"0x[0-9a-fA-F]{40}", a):
     raise SystemExit("BNB deployment manifest is required.")
+token = m.get("official_tab_address")
+holders = m.get("holder_access_enabled", False)
+if not isinstance(holders, bool):
+    raise SystemExit("Holder access must be an explicit boolean.")
+if token is not None and (not isinstance(token, str) or not re.fullmatch(r"0x[0-9a-f]{40}", token) or int(token, 16) == 0 or not re.fullmatch(r"0x[0-9a-f]{64}", str(m.get("official_tab_code_hash", "")))):
+    raise SystemExit("The official TAB token and runtime hash must be verified.")
+if holders and token is None:
+    raise SystemExit("Holder access requires the official TAB token.")
 with (root / "deploy/bnb.env").open("a") as env:
     env.write("TAB_BNB_PROTOCOL=" + a + "\n")
+    env.write("TAB_OFFICIAL_TOKEN=" + (token or "") + "\n")
+    env.write("TAB_HOLDER_ACCESS_ENABLED=" + str(holders).lower() + "\n")
 CHAIN
     cp "$root/README.md" "$root/.env.example" "$release/"
     /usr/bin/python3 - "$release/web" "$release/public-assets.paths" <<'ASSETS'

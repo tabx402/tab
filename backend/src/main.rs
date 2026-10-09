@@ -5,14 +5,16 @@ mod bnb;
 mod config;
 mod credit;
 mod db;
+mod deliveries;
 mod error;
 mod finance;
 mod financial;
+mod holder_access;
 mod intents;
 mod invoices;
+mod job_execution;
 mod jobs;
 mod models;
-mod operator_demo;
 mod products;
 mod provider_search;
 mod registry_cache;
@@ -27,6 +29,7 @@ use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct AppState {
+    pub holder_access_enabled: bool,
     pub config: Arc<Config>,
     pub store: Store,
     pub client: reqwest::Client,
@@ -46,6 +49,7 @@ impl AppState {
         let auth = Auth::new(config.app_id.clone(), client.clone());
         let bnb = Bnb::new(config.clone(), client.clone());
         Ok(Self {
+            holder_access_enabled: holder_access::enabled_from_environment(),
             config,
             store,
             client,
@@ -57,6 +61,13 @@ impl AppState {
 }
 #[tokio::main]
 async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    let arguments: Vec<_> = std::env::args().skip(1).collect();
+    if arguments
+        .iter()
+        .any(|arg| !["--print-openapi", "--init-database"].contains(&arg.as_str()))
+    {
+        return Err("Unsupported command-line argument.".into());
+    }
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -64,16 +75,13 @@ async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         )
         .init();
     let config = Config::environment().map_err(|e| e.1)?;
-    if std::env::args().any(|arg| arg == "--print-openapi") {
+    if arguments.iter().any(|arg| arg == "--print-openapi") {
         println!("{}", serde_json::to_string_pretty(&schema::document())?);
         return Ok(());
     }
     let state = AppState::new(config).map_err(|e| e.1)?;
-    if std::env::args().any(|arg| arg == "--init-database") {
+    if arguments.iter().any(|arg| arg == "--init-database") {
         return Ok(());
-    }
-    if std::env::args().any(|arg| arg == "--operator-demo") {
-        return operator_demo::serve(state).await.map_err(|e| e.1.into());
     }
     let address = state.config.bind.clone();
     let scheduled = state.clone();

@@ -14,7 +14,7 @@ import {FinanceRouter} from "./TabBuyback.t.sol";
 /// The default protocol is the immutable deployment recorded in contracts/deployments/bnb-56.json.
 contract TabFinanceForkTest is Test {
     address constant USDT = 0x55d398326f99059fF775485246999027B3197955;
-    address constant DEPLOYED_PROTOCOL = address(bytes20(hex"567e7187d477b1a68c3ac3d292ad44a0d5e770c7"));
+    address constant DEPLOYED_PROTOCOL = address(bytes20(hex"be2c140c0b40d25ef5531d93c0696318319e6375"));
     address constant BORROWER = address(0xB0B);
     address constant LENDER = address(0x1E);
     address constant BUYER = address(0xA11CE);
@@ -25,6 +25,7 @@ contract TabFinanceForkTest is Test {
     bytes32 constant H = keccak256("Tab new-module fork terms and receipts");
     TabProtocol protocol;
     IERC20 usdt;
+    FinanceToken official;
 
     function setUp() public {
         string memory rpc = vm.envOr("BNB_FORK_RPC_URL", string(""));
@@ -41,6 +42,14 @@ contract TabFinanceForkTest is Test {
         deal(USDT, LENDER, 10_000 ether);
         deal(USDT, BORROWER, 10_000 ether);
         deal(USDT, BUYER, 10_000 ether);
+        // These candidate-module tests use a local holder token through the
+        // protocol's external getter. They must not overwrite or reconfigure
+        // the real protocol's one-time official TAB setting after activation.
+        official = new FinanceToken(18);
+        vm.mockCall(address(protocol), abi.encodeWithSignature("tabToken()"), abi.encode(address(official)));
+        official.mint(LENDER, 1 ether);
+        official.mint(BORROWER, 1 ether);
+        official.mint(protocol.authority(), 1 ether);
     }
 
     function testDeployedProtocolWorkingCapitalInteropOnBnbFork() public {
@@ -122,10 +131,6 @@ contract TabFinanceForkTest is Test {
 
     function testCanonicalUsdtExplicitBuybackFundingOnBnbFork() public {
         // Official-token configuration is simulated solely in this isolated fork, never on mainnet.
-        FinanceToken official = new FinanceToken(18);
-        assertEq(protocol.tabToken(), address(0));
-        vm.prank(protocol.authority());
-        protocol.configureTab(address(official));
         FinanceRouter router = new FinanceRouter();
         address[] memory route = new address[](2);
         route[0] = USDT;

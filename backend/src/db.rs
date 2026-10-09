@@ -39,7 +39,16 @@ impl Store {
             db.execute_batch("CREATE TABLE network_identity(chain TEXT PRIMARY KEY); INSERT INTO network_identity VALUES('eip155:56:usdt18');")?;
         }
         db.execute_batch("CREATE TABLE IF NOT EXISTS chain_receipts(tx_hash TEXT PRIMARY KEY, action_id TEXT NOT NULL UNIQUE, verified_at TEXT NOT NULL);")?;
+        db.execute_batch("CREATE TABLE IF NOT EXISTS agent_public_exclusions(agent_id TEXT PRIMARY KEY,excluded_at TEXT NOT NULL);")?;
+        db.execute_batch("CREATE TABLE IF NOT EXISTS registry_public_exclusions(registry_id TEXT PRIMARY KEY,excluded_at TEXT NOT NULL);")?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS x402_quotes(id TEXT PRIMARY KEY,owner TEXT NOT NULL,agent_id TEXT NOT NULL,payload TEXT NOT NULL,amount TEXT NOT NULL,day INTEGER NOT NULL,expires INTEGER NOT NULL,status TEXT NOT NULL,signature TEXT,tx_hash TEXT UNIQUE); CREATE INDEX IF NOT EXISTS x402_agent_day ON x402_quotes(agent_id,day);")?;
+        db.execute_batch("CREATE TABLE IF NOT EXISTS paid_deliveries(
+          quote_id TEXT PRIMARY KEY,owner TEXT NOT NULL,agent_id TEXT NOT NULL,
+          task_hash TEXT NOT NULL,provider TEXT NOT NULL,resource_url TEXT NOT NULL,
+          tx_hash TEXT NOT NULL,response_hash TEXT NOT NULL,received_at TEXT NOT NULL,
+          service_status TEXT NOT NULL CHECK(service_status IN ('completed','failed_after_payment','unavailable')),
+          data TEXT,body_bytes INTEGER NOT NULL);
+          CREATE INDEX IF NOT EXISTS paid_delivery_agent ON paid_deliveries(owner,agent_id,received_at);")?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -54,6 +63,10 @@ impl Store {
           CREATE TABLE IF NOT EXISTS agent_events(id INTEGER PRIMARY KEY AUTOINCREMENT,agent_id TEXT NOT NULL,kind TEXT NOT NULL,status TEXT NOT NULL,at TEXT NOT NULL,message TEXT NOT NULL,provider TEXT,amount TEXT,currency TEXT,tx_hash TEXT);
           CREATE TABLE IF NOT EXISTS agent_runs(id TEXT PRIMARY KEY,agent_id TEXT NOT NULL,status TEXT NOT NULL,started_at TEXT NOT NULL,finished_at TEXT,output TEXT NOT NULL);
           CREATE UNIQUE INDEX IF NOT EXISTS active_agent_run ON agent_runs(agent_id) WHERE status='running';
+          CREATE TABLE IF NOT EXISTS job_runs(id TEXT PRIMARY KEY,job_id TEXT NOT NULL,agent_id TEXT NOT NULL,owner TEXT NOT NULL,status TEXT NOT NULL,started_at TEXT NOT NULL,finished_at TEXT,output TEXT NOT NULL);
+          CREATE UNIQUE INDEX IF NOT EXISTS active_job_run ON job_runs(job_id) WHERE status='running';
+          CREATE UNIQUE INDEX IF NOT EXISTS active_job_agent_run ON job_runs(agent_id) WHERE status='running';
+          CREATE INDEX IF NOT EXISTS job_run_history ON job_runs(job_id,started_at);
           CREATE TABLE IF NOT EXISTS wallet_challenges(agent_id TEXT PRIMARY KEY,wallet TEXT NOT NULL,message TEXT NOT NULL,expires_at TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS agent_keys(hash TEXT PRIMARY KEY,agent_id TEXT NOT NULL,created_at TEXT NOT NULL);
           CREATE UNIQUE INDEX IF NOT EXISTS unique_agent_registration ON runtime_agents(json_extract(payload,'$.registration_tx')) WHERE json_extract(payload,'$.registration_tx') IS NOT NULL;
@@ -72,6 +85,12 @@ impl Store {
           CREATE UNIQUE INDEX IF NOT EXISTS sponsor_pending_wallet ON sponsor_jobs(wallet) WHERE status='pending';")?;
         db.execute_batch("CREATE TABLE IF NOT EXISTS accounts(owner TEXT PRIMARY KEY,display_name TEXT NOT NULL,created_at TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS agent_creation_requests(owner TEXT NOT NULL,request_key TEXT NOT NULL,agent_id TEXT NOT NULL,plan_hash TEXT NOT NULL,PRIMARY KEY(owner,request_key));")?;
+        db.execute_batch(
+            "CREATE VIEW IF NOT EXISTS unlisted_public_agents AS
+          SELECT agent_id FROM agent_public_exclusions
+          UNION SELECT a.id AS agent_id FROM runtime_agents a JOIN registry_public_exclusions x
+            ON lower(x.registry_id)=lower(json_extract(a.payload,'$.registry_id'));",
+        )?;
         let mut statement = db.prepare("PRAGMA table_info(job_intents)")?;
         let columns = statement
             .query_map([], |row| row.get::<_, String>(1))?
@@ -81,6 +100,10 @@ impl Store {
         }
         db.execute(
             "UPDATE agent_runs SET status='interrupted',finished_at=? WHERE status='running'",
+            [now()],
+        )?;
+        db.execute(
+            "UPDATE job_runs SET status='interrupted',finished_at=? WHERE status='running'",
             [now()],
         )?;
         Ok(store)
@@ -113,6 +136,18 @@ impl Store {
         let db = Connection::open(&self.path)?;
         db.busy_timeout(Duration::from_secs(5))?;
         Ok(db)
+    }
+    pub fn publicly_excluded(db: &Connection, agent_id: &str) -> Result<bool> {
+        Ok(db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM unlisted_public_agents WHERE agent_id=?)",
+            [agent_id],
+            |r| r.get(0),
+        )?)
+    }
+    pub fn excluded_registry_ids(db: &Connection) -> Result<std::collections::HashSet<String>> {
+        let mut statement = db.prepare("SELECT lower(registry_id) FROM registry_public_exclusions UNION SELECT lower(json_extract(a.payload,'$.registry_id')) FROM runtime_agents a JOIN unlisted_public_agents e ON e.agent_id=a.id WHERE json_extract(a.payload,'$.registry_id') IS NOT NULL")?;
+        let ids = statement.query_map([], |r| r.get::<_, String>(0))?;
+        Ok(ids.collect::<std::result::Result<_, _>>()?)
     }
     pub fn agent(&self, owner: &str, id: &str) -> Result<RuntimeAgent> {
         Self::agent_in(&self.connect()?, owner, id)

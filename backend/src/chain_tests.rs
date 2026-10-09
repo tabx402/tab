@@ -46,6 +46,11 @@ async fn rpc(State(replies): State<Replies>, Json(request): Json<Value>) -> Json
     };
     let mut values = replies.lock().unwrap();
     values.insert(format!("request:{key}"), request.clone());
+    if matches!(method, "eth_call" | "eth_getBalance") {
+        if let Some(block) = request["params"][1].as_str() {
+            values.insert(format!("request:{key}:block:{block}"), request.clone());
+        }
+    }
     if method == "eth_sendRawTransaction" {
         values
             .entry("sent".into())
@@ -71,6 +76,14 @@ async fn rpc(State(replies): State<Replies>, Json(request): Json<Value>) -> Json
     let result = if method == "eth_getCode" {
         values
             .get(&format!("code:{}", request["params"][0].as_str().unwrap()))
+            .or_else(|| values.get(&key))
+            .cloned()
+    } else if method == "eth_call" {
+        values
+            .get(&format!(
+                "call:{}",
+                request["params"][0]["data"].as_str().unwrap()
+            ))
             .or_else(|| values.get(&key))
             .cloned()
     } else {
@@ -749,7 +762,8 @@ async fn public_transaction_status_binds_recovery_envelope_to_canonical_failed_r
 }
 
 #[tokio::test]
-async fn cached_registry_endpoint_does_not_wait_for_slow_deployment_rpc_or_publish_partial_records() {
+async fn cached_registry_endpoint_does_not_wait_for_slow_deployment_rpc_or_publish_partial_records()
+{
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -792,10 +806,21 @@ async fn cached_registry_endpoint_does_not_wait_for_slow_deployment_rpc_or_publi
     }
     assert!(payload["error"].is_null());
     assert_eq!(payload["discovery"]["status"], "checking");
-    assert!(f.replies.lock().unwrap().get("request:eth_chainId").is_none());
-    let error=tokio::time::timeout(std::time::Duration::from_secs(13),f.state.refresh_registry()).await.unwrap().unwrap_err();
+    assert!(f
+        .replies
+        .lock()
+        .unwrap()
+        .get("request:eth_chainId")
+        .is_none());
+    let error = tokio::time::timeout(
+        std::time::Duration::from_secs(13),
+        f.state.refresh_registry(),
+    )
+    .await
+    .unwrap()
+    .unwrap_err();
     assert!(error.1.contains("timed out"));
-    let registry=f.state.registry().await;
+    let registry = f.state.registry().await;
     assert!(registry.agents.is_empty());
     assert!(registry.owner.is_none());
     assert!(registry.verified_at.is_none());
@@ -814,7 +839,12 @@ async fn legacy_secured_assets_are_unsupported_and_stock_module_is_separate() {
         assert!(asset["risk"].is_null());
         assert!(asset["price_usdt"].is_null());
     }
-    assert!(f.replies.lock().unwrap().keys().all(|key| !key.starts_with("request:")));
+    assert!(f
+        .replies
+        .lock()
+        .unwrap()
+        .keys()
+        .all(|key| !key.starts_with("request:")));
 }
 
 #[tokio::test]
@@ -822,9 +852,14 @@ async fn secured_open_credit_uses_collateral_terms_and_exact_usdt_approval() {
     const SIGNER: &str = "0x7777777777777777777777777777777777777777";
     const MERCHANT: &str = "0x9999999999999999999999999999999999999999";
     let f = fixture().await;
-    let mut manifest: Value = serde_json::from_slice(&std::fs::read(&f.state.config.manifest).unwrap()).unwrap();
+    let mut manifest: Value =
+        serde_json::from_slice(&std::fs::read(&f.state.config.manifest).unwrap()).unwrap();
     manifest["credit_mode"] = json!("collateralized");
-    std::fs::write(&f.state.config.manifest, serde_json::to_vec(&manifest).unwrap()).unwrap();
+    std::fs::write(
+        &f.state.config.manifest,
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
     let mut agents = vec![];
     for name in ["lender", "borrower"] {
         let mut agent = f.state.create_agent("owner", serde_json::from_value(json!({"name":name,"purpose":"monitor a public wallet","daily_cap":"10","max_call":"1","tools":["bnb-rpc"],"public_activity":false})).unwrap()).unwrap();
@@ -841,7 +876,19 @@ async fn secured_open_credit_uses_collateral_terms_and_exact_usdt_approval() {
     std::fs::write(&f.state.config.x402_merchants, serde_json::to_vec(&json!([{"id":"credit-fixture","resource_url":"https://merchant.example/data","facilitator_url":"https://facilitator.example","recipient":MERCHANT,"network":"eip155:56","asset":bnb::USDT,"max_amount":"1000000000000"}])).unwrap()).unwrap();
     {
         let mut replies = f.replies.lock().unwrap();
-        replies.insert(format!("call:{}",selector("collateralAssets(address)")),encoded(&[bnb::addr(bnb::ZERO).unwrap(),uint(9000),uint(9500),uint(200),uint(18),Token::Bool(false),uint(1_000_000_000_000_000_000_000_000),uint(0)]));
+        replies.insert(
+            format!("call:{}", selector("collateralAssets(address)")),
+            encoded(&[
+                bnb::addr(bnb::ZERO).unwrap(),
+                uint(9000),
+                uint(9500),
+                uint(200),
+                uint(18),
+                Token::Bool(false),
+                uint(1_000_000_000_000_000_000_000_000),
+                uint(0),
+            ]),
+        );
         replies.insert(
             format!("call:{}", selector("getAgent(bytes32)")),
             encoded(&[Token::Tuple(vec![
@@ -903,27 +950,27 @@ async fn secured_open_credit_uses_collateral_terms_and_exact_usdt_approval() {
     assert_eq!(&calldata[..4], &method.short_signature());
     assert_eq!(
         method.decode_input(&calldata[4..]).unwrap(),
-        vec![Token::Tuple(vec![
-            bnb::bytes32(TXHASH).unwrap(),
-            bnb::bytes32(borrower.registry_id.as_deref().unwrap()).unwrap(),
-            bnb::addr(SIGNER).unwrap(),
-            uint(principal),
-            uint(250_000_000_000_000_000),
-            uint(2_000_000_000_000_000_000),
-            uint(expires as u128),
-            uint(1),
-            Token::Array(vec![bnb::addr(MERCHANT).unwrap()])
-        ]),bnb::addr(bnb::USDT).unwrap()]
+        vec![
+            Token::Tuple(vec![
+                bnb::bytes32(TXHASH).unwrap(),
+                bnb::bytes32(borrower.registry_id.as_deref().unwrap()).unwrap(),
+                bnb::addr(SIGNER).unwrap(),
+                uint(principal),
+                uint(250_000_000_000_000_000),
+                uint(2_000_000_000_000_000_000),
+                uint(expires as u128),
+                uint(1),
+                Token::Array(vec![bnb::addr(MERCHANT).unwrap()])
+            ]),
+            bnb::addr(bnb::USDT).unwrap()
+        ]
     );
     assert_eq!(
         f.state.wallet_actions("owner", &lender.id).unwrap().len(),
         1
     );
     let replies = f.replies.lock().unwrap();
-    for signature in [
-        "collateralPositions(bytes32)",
-        "collateralPrice(address)",
-    ] {
+    for signature in ["collateralPositions(bytes32)", "collateralPrice(address)"] {
         assert!(!replies.contains_key(&format!("request:call:{}", selector(signature))));
     }
 }
@@ -966,9 +1013,175 @@ async fn legacy_collateral_preparation_fails_before_rpc_or_wallet_intent() {
 
 #[tokio::test]
 async fn token_fee_reports_verified_legacy_rate_until_new_contract_is_active() {
-    let f=fixture().await;
-    let system=f.state.token_system().await;
-    assert_eq!(system["fee_bps"],200);
-    assert_eq!(system["holder_exemption_enabled"],false);
-    assert_eq!(system["official_tab_address"],Value::Null);
+    let f = fixture().await;
+    let system = f.state.token_system().await;
+    assert_eq!(system["fee_bps"], 200);
+    assert_eq!(system["holder_exemption_enabled"], false);
+    assert_eq!(system["official_tab_address"], Value::Null);
+}
+
+#[tokio::test]
+async fn closed_branch_refresh_preserves_paid_work_and_executor_cancellation_authority() {
+    use crate::db::Store;
+    let f = fixture().await;
+    let executor_wallet = "0x7777777777777777777777777777777777777777";
+    let make_agent =
+        |name: &str, wallet: &str| {
+            let mut agent = f.state.create_agent("owner", serde_json::from_value(json!({
+            "name":name,"purpose":"deliver an observed wallet report","tools":["bnb-rpc"],
+            "daily_cap":"10","max_call":"0.1","public_activity":true
+        })).unwrap()).unwrap();
+            agent.wallet = Some(wallet.into());
+            agent.registry_address = PROTOCOL.into();
+            agent.registry_id = Some(f.state.bnb.agent_address(wallet, &agent.id).unwrap());
+            agent.status = "ready".into();
+            f.state.store.save_agent(&agent).unwrap();
+            agent
+        };
+    let buyer = make_agent("buyer", WALLET);
+    let executor = make_agent("executor", executor_wallet);
+    let plan = |budget: &str, hours: i64| {
+        serde_json::from_value(json!({
+        "title":"review a real observation","description":"deliver the observed balance and block reference",
+        "executor_id":executor.id,"budget":budget,"max_call":"0.1","tools":["bnb-rpc"],
+        "deadline":(chrono::Utc::now()+chrono::Duration::hours(hours)).to_rfc3339(),"public_activity":true
+    })).unwrap()
+    };
+    let root = f
+        .state
+        .create_job("owner", &buyer.id, plan("5", 4), None)
+        .await
+        .unwrap();
+    let mut child = f
+        .state
+        .create_job("owner", &executor.id, plan("1", 3), Some(&root.id))
+        .await
+        .unwrap();
+    let mut root = f.state.get_job("owner", &root.id).unwrap();
+    root.state = "open".into();
+    root.funding = "funded".into();
+    child.state = "accepted".into(); // Earlier releases also persisted state 5 as accepted.
+    child.funding = "funded".into();
+    child.available = rust_decimal::Decimal::ZERO;
+    child.chain_tx = Some(TXHASH.into());
+    Store::save_job(&f.state.store.connect().unwrap(), &root).unwrap();
+    Store::save_job(&f.state.store.connect().unwrap(), &child).unwrap();
+    let chain_job = |job: &Job, state: u128| {
+        encoded(&[Token::Tuple(vec![
+            bnb::bytes32(&bnb::id(&job.root_id).unwrap()).unwrap(),
+            bnb::bytes32(
+                &job.parent_id
+                    .as_deref()
+                    .map(bnb::id)
+                    .transpose()
+                    .unwrap()
+                    .unwrap_or_else(|| bnb::ZERO_HASH.into()),
+            )
+            .unwrap(),
+            bnb::addr(&job.buyer_wallet).unwrap(),
+            bnb::addr(&job.executor_wallet).unwrap(),
+            bnb::bytes32(bnb::ZERO_HASH).unwrap(),
+            uint(units(job.plan.budget).unwrap()),
+            uint(if state == 5 {
+                0
+            } else {
+                units(job.available).unwrap()
+            }),
+            uint(units(job.plan.max_call).unwrap()),
+            uint(job.plan.deadline.timestamp() as u128),
+            bnb::bytes32(&job.terms_hash).unwrap(),
+            bnb::bytes32(if state == 5 { TXHASH } else { bnb::ZERO_HASH }).unwrap(),
+            uint(1),
+            uint(if state == 5 {
+                980_000_000_000_000_000
+            } else {
+                0
+            }),
+            uint(0),
+            uint(0),
+            uint(u128::from(job.depth)),
+            uint(state),
+            Token::Bool(false),
+            Token::Bool(state == 5),
+            uint(200),
+            uint(if state == 5 {
+                20_000_000_000_000_000
+            } else {
+                0
+            }),
+            uint(0),
+            uint(1),
+            uint(0),
+            Token::Array(vec![]),
+        ])])
+    };
+    {
+        let mut replies = f.replies.lock().unwrap();
+        for (job, state) in [(&root, 1), (&child, 5)] {
+            let data = abi()
+                .function("getJob")
+                .unwrap()
+                .encode_input(&[bnb::bytes32(&job.id).unwrap()])
+                .unwrap();
+            replies.insert(
+                format!("call:0x{}", hex::encode(data)),
+                chain_job(job, state),
+            );
+        }
+        replies.insert(
+            format!("call:{}", selector("getAgent(bytes32)")),
+            encoded(&[Token::Tuple(vec![
+                bnb::addr(executor_wallet).unwrap(),
+                Token::String(executor.plan.name.clone()),
+                uint(units(executor.plan.daily_cap).unwrap()),
+                bnb::bytes32(&f.state.policy(&executor)).unwrap(),
+                Token::Bool(false),
+                uint(1),
+                uint(0),
+                uint(0),
+            ])]),
+        );
+    }
+    let closed = f.state.refresh_job("owner", &child.id, None).await.unwrap();
+    assert_eq!(closed.state, "closed");
+    assert_eq!(closed.reward_paid.to_string(), "0.98");
+    assert_eq!(closed.fee_paid.to_string(), "0.02");
+    assert_eq!(
+        f.state
+            .refresh_job("owner", &child.id, None)
+            .await
+            .unwrap()
+            .state,
+        "closed"
+    );
+    let metrics = f.state.metrics().await.unwrap();
+    assert_eq!(metrics["completed_commitments"], 1);
+    assert_eq!(metrics["paid_collaborations"], 1);
+    assert_eq!(
+        metrics["customer_payments_usdt"], "0",
+        "a closed branch must not invent a paid root customer"
+    );
+    let records = f.state.operator_records().unwrap();
+    let record = records["records"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|record| record["agent"]["id"] == executor.id)
+        .unwrap();
+    assert_eq!(record["accepted_root_jobs"], 0);
+    assert_eq!(
+        record["executor_payments_usdt"], "0",
+        "operator root totals must not count the child again"
+    );
+    let intent = f
+        .state
+        .prepare_job("owner", &root.id, "cancel")
+        .await
+        .unwrap();
+    assert_eq!(
+        intent.sender, executor_wallet,
+        "before review expiry choose the executor even if this account also owns the buyer"
+    );
+    assert_eq!(intent.data[..10], selector("cancelJob(bytes32)"));
+    assert!(!f.replies.lock().unwrap().contains_key("sent"));
 }

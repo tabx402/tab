@@ -9,6 +9,7 @@ import {
 } from "./TabFinanceTestBase.sol";
 import {TabStockLending} from "../src/TabStockLending.sol";
 import {TabUSDTLiquidity} from "../src/TabUSDTLiquidity.sol";
+import {TabHolderAccess} from "../src/TabHolderAccess.sol";
 
 contract TabStockLendingTest is FinanceBase {
     TabStockLending pool;
@@ -19,6 +20,7 @@ contract TabStockLendingTest is FinanceBase {
 
     function setUp() public override {
         super.setUp();
+        _holders(protocol);
         stock = new FinanceToken(6);
         stockFeed = new FinanceFeed(8, 100e8);
         usdtFeed = new FinanceFeed(8, 1e8);
@@ -40,6 +42,23 @@ contract TabStockLendingTest is FinanceBase {
     function _loan() internal {
         vm.prank(borrower);
         pool.borrow(LOAN, address(stock), 20e6, 1_000 ether);
+    }
+
+    function testHolderLossBlocksBorrowingButKeepsRepaymentAndCollateralRelease() public {
+        _loan();
+        vm.prank(borrower);
+        holderToken.transfer(merchant, 1 ether);
+        vm.prank(borrower);
+        vm.expectRevert(TabHolderAccess.TabHoldingRequired.selector);
+        pool.borrow(keccak256("another-loan"), address(stock), 2e6, 1 ether);
+        vm.prank(borrower);
+        pool.addCollateral(LOAN, 1e6);
+        vm.prank(borrower);
+        pool.repay(LOAN, 1_000 ether);
+        vm.prank(borrower);
+        pool.withdrawCollateral(LOAN, 21e6);
+        assertEq(pool.getLoan(LOAN).collateral, 0);
+        assertEq(pool.getLoan(LOAN).debt, 0);
     }
 
     function testStockSixDecimalsOracleEightDecimalsPricedInUSDT() public {

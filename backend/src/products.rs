@@ -173,6 +173,19 @@ impl AppState {
             registry.verified_at = None;
         }
         registry.discovery = discovery;
+        match self
+            .store
+            .connect()
+            .and_then(|db| Store::excluded_registry_ids(&db))
+        {
+            Ok(excluded) => registry
+                .agents
+                .retain(|agent| !excluded.contains(&agent.id.to_lowercase())),
+            Err(_) => {
+                registry.agents.clear();
+                registry.error = Some("Public agent visibility is temporarily unavailable.".into());
+            }
+        }
         registry
     }
     pub async fn refresh_registry(&self) -> Result<()> {
@@ -321,7 +334,7 @@ impl AppState {
                 [owner],
             )
         } else {
-            Store::list_payload(&db,"SELECT payload FROM bounties WHERE json_extract(payload,'$.public_activity')=1 ORDER BY created_at DESC LIMIT 200",[])
+            Store::list_payload(&db,"SELECT b.payload FROM bounties b WHERE json_extract(b.payload,'$.public_activity')=1 AND NOT EXISTS(SELECT 1 FROM unlisted_public_agents x WHERE x.agent_id=json_extract(b.payload,'$.assigned_agent_id')) AND NOT EXISTS(SELECT 1 FROM jobs j JOIN jobs p ON p.root_id=j.root_id WHERE j.id=json_extract(b.payload,'$.job_id') AND EXISTS(SELECT 1 FROM unlisted_public_agents x WHERE x.agent_id=json_extract(p.payload,'$.requester_id') OR x.agent_id=json_extract(p.payload,'$.executor_id'))) ORDER BY b.created_at DESC LIMIT 200",[])
         }
     }
     pub async fn protocol_data(&self) -> Result<Option<Value>> {
@@ -334,12 +347,21 @@ impl AppState {
     }
     pub async fn token_system(&self) -> Value {
         let protocol = self.protocol_data().await.ok().flatten();
-        let fee = protocol.as_ref().and_then(|p| bnb::number(&p["feeBps"]).ok());
-        let configured = self
+        let fee = protocol
+            .as_ref()
+            .and_then(|p| bnb::number(&p["feeBps"]).ok());
+        let address_matches = self
             .config
             .official_tab
             .as_ref()
             .is_some_and(|token| protocol.as_ref().is_some_and(|p| p["tabToken"] == *token));
+        let configured = address_matches
+            && tokio::time::timeout(
+                std::time::Duration::from_secs(8),
+                self.verified_official_tab(),
+            )
+            .await
+            .is_ok_and(|result| result.is_ok());
         json!({"official_tab_address":self.config.official_tab,"status":if configured{"verified"}else if self.config.official_tab.is_none(){"not_configured"}else{"unavailable"},"staking_enabled":configured,"paired_token_required":true,"tab_holding_required":true,"fee_destination":"protocol_reserve","fee_bps":fee,"holder_fee_bps":0,"holder_exemption_enabled":configured&&fee==Some(50),"holder_exemption_scope":"executor wallet balance at settlement","fee_status":if fee.is_some(){"immutable_onchain"}else{"unverified"},"penalty_rule":"deadline_missed","buyer_disagreement_slashable":false,"token_bond_guarantees_usdt":false,"trading_pause_scope":"Tab actions only; external pools remain independent"})
     }
     pub async fn eligibility(&self, owner: &str, id: &str) -> Result<Value> {
@@ -391,7 +413,7 @@ impl AppState {
         let jobs = if protocol.is_some() { jobs } else { vec![] };
         let completed = jobs
             .iter()
-            .filter(|j| j.state == "accepted" && j.funding == "funded")
+            .filter(|j| ["accepted", "closed"].contains(&j.state.as_str()) && j.funding == "funded")
             .count();
         let missed = jobs
             .iter()

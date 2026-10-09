@@ -107,6 +107,7 @@ contract FinanceMarket {
 
 abstract contract FinanceBase is Test {
     FinanceToken internal usdt;
+    FinanceToken internal holderToken;
     TabProtocol internal protocol;
     address internal lender = address(0x1E);
     address internal borrower = address(0xB0B);
@@ -135,6 +136,16 @@ abstract contract FinanceBase is Test {
     function _approve(address token, address actor, address target) internal {
         vm.prank(actor);
         FinanceToken(token).approve(target, type(uint256).max);
+    }
+
+    function _holders(TabProtocol target) internal {
+        if (address(holderToken) == address(0)) {
+            holderToken = new FinanceToken(18);
+            holderToken.mint(lender, 1 ether);
+            holderToken.mint(borrower, 1 ether);
+            holderToken.mint(address(this), 1 ether);
+        }
+        target.configureTab(address(holderToken));
     }
 
     function _job() internal {

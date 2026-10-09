@@ -23,10 +23,6 @@ use utoipa::OpenApi;
         AgentRecord,
         PublicConfig,
         Health,
-        Summary,
-        AgentExample,
-        Receipt,
-        PublicData,
         RegisteredAgent,
         RegistryTransaction,
         RegistryData,
@@ -38,6 +34,7 @@ use utoipa::OpenApi;
         SponsorshipResult,
         SponsoredChallenge,
         PauseInput,
+        RunInput,
         JobMerchant,
         ServiceInvoice,
         JobInput,
@@ -60,7 +57,12 @@ use utoipa::OpenApi;
         crate::finance::FinanceModule,
         crate::finance::FinanceAsset,
         crate::finance::FinanceModules,
-        crate::finance::FinanceRequest
+        crate::finance::FinanceRequest,
+        crate::job_execution::JobRun,
+        crate::holder_access::HolderAccess,
+        crate::holder_access::HolderChallenge,
+        crate::holder_access::WalletInput,
+        crate::holder_access::ProofInput
     ))
 )]
 struct ApiDoc;
@@ -68,7 +70,8 @@ pub fn document() -> Value {
     let mut doc = serde_json::to_value(ApiDoc::openapi()).expect("OpenAPI serializes");
     doc["components"]["schemas"]["AgentRun"]["properties"]["output"] =
         json!({"type":"object","additionalProperties":true});
-    doc["components"]["schemas"]["PublicData"]["properties"]["series"] = json!({"type":"array","items":{"type":"object","properties":{"date":{"type":"string"},"spend":{"type":"number"},"repayment":{"type":"number"}},"required":["date","spend","repayment"]}});
+    doc["components"]["schemas"]["JobRun"]["properties"]["output"] =
+        json!({"type":"object","additionalProperties":true});
     doc["components"]["schemas"]["Job"]["allOf"][1]["properties"]["evidence"] =
         json!({"type":["object","null"],"additionalProperties":true});
     doc["components"]["schemas"]["AgentEvent"]["properties"]["preview"] =
@@ -76,6 +79,27 @@ pub fn document() -> Value {
     doc["components"]["schemas"]["TransactionIntent"]["properties"]["details"] =
         json!({"type":"object","additionalProperties":true});
     let operations: Vec<(&str, &str, Option<&str>, Option<&str>, bool)> = vec![
+        (
+            "get",
+            "/api/account/holder-access",
+            None,
+            Some("HolderAccess"),
+            true,
+        ),
+        (
+            "post",
+            "/api/account/holder-access/challenge",
+            Some("WalletInput"),
+            Some("HolderChallenge"),
+            true,
+        ),
+        (
+            "post",
+            "/api/account/holder-access/verify",
+            Some("ProofInput"),
+            Some("HolderAccess"),
+            true,
+        ),
         ("get", "/api/account/profile", None, None, true),
         (
             "post",
@@ -170,7 +194,6 @@ pub fn document() -> Value {
         ("get", "/api/health", None, Some("Health"), false),
         ("get", "/api/config", None, Some("PublicConfig"), false),
         ("get", "/api/providers", None, Some("Provider[]"), false),
-        ("get", "/api/overview", None, Some("PublicData"), false),
         ("get", "/api/registry", None, Some("RegistryData"), false),
         (
             "get",
@@ -246,7 +269,7 @@ pub fn document() -> Value {
         (
             "post",
             "/api/account/runtime/{id}/run",
-            None,
+            Some("RunInput"),
             Some("AgentRun"),
             true,
         ),
@@ -266,7 +289,7 @@ pub fn document() -> Value {
         ),
         ("post", "/api/account/runtime/{id}/key", None, None, true),
         ("delete", "/api/account/runtime/{id}/key", None, None, true),
-        ("post", "/api/agent/run", None, Some("AgentRun"), true),
+        ("post", "/api/agent/run", Some("RunInput"), Some("AgentRun"), true),
         ("get", "/api/activity", None, Some("AgentEvent[]"), false),
         (
             "post",
@@ -332,6 +355,8 @@ pub fn document() -> Value {
             true,
         ),
         ("get", "/api/account/jobs/{id}", None, Some("Job"), true),
+        ("post", "/api/account/jobs/{id}/run", None, Some("JobRun"), true),
+        ("get", "/api/account/jobs/{id}/runs", None, Some("JobRun[]"), true),
         (
             "post",
             "/api/account/runtime/{id}/jobs",
@@ -375,6 +400,8 @@ pub fn document() -> Value {
             true,
         ),
         ("get", "/api/agent/jobs", None, Some("Job[]"), true),
+        ("post", "/api/agent/jobs/{id}/run", None, Some("JobRun"), true),
+        ("get", "/api/agent/jobs/{id}/runs", None, Some("JobRun[]"), true),
         (
             "post",
             "/api/agent/jobs/{id}/branches",
@@ -504,11 +531,11 @@ pub fn document() -> Value {
                 json!({"application/json":{"schema":reference(model)}});
         }
         if let Some(model) = input {
-            operation["requestBody"] =
-                json!({"required":true,"content":{"application/json":{"schema":reference(model)}}});
+            operation["requestBody"] = json!({"required":model != "RunInput","content":{"application/json":{"schema":reference(model)}}});
         }
         if private {
             operation["security"] = json!([{"BearerAuth":[]}]);
+            operation["responses"]["403"] = json!({"description":"The account, wallet, or current TAB holding does not authorize this action"});
         }
         let mut params = path
             .split('/')
@@ -517,6 +544,14 @@ pub fn document() -> Value {
             .collect::<Vec<_>>();
         if path == "/api/starter/wallet" {
             params.push(json!({"name":"address","in":"query","required":true,"schema":{"type":"string","pattern":"^0x[0-9a-fA-F]{40}$"}}));
+        }
+        if path == "/api/account/holder-access" {
+            params.push(json!({"name":"wallet","in":"query","required":false,"schema":{"type":"string","pattern":"^0x[0-9a-fA-F]{40}$"}}));
+            operation["responses"]["403"] =
+                json!({"description":"Wallet ownership or TAB holding is required"});
+        }
+        if method == "post" && ["/api/account/agents", "/api/account/runtime", "/api/account/bounties"].contains(&path) {
+            params.push(json!({"name":"X-Tab-Holder-Wallet","in":"header","required":false,"description":"Selected wallet; ownership and current TAB holdings are verified by the server when holder access is enabled","schema":{"type":"string","pattern":"^0x[0-9a-fA-F]{40}$"}}));
         }
         if !params.is_empty() {
             operation["parameters"] = json!(params);

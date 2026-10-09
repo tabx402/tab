@@ -12,7 +12,6 @@
     "test:jobs": "node tests/jobs.mjs",
     "test:access-key": "node tests/access-key.mjs",
     "test:bnb": "node tests/bnb.mjs",
-    "record:bnb": "node tests/record-bnb-media.mjs",
     "test:wallet": "node tests/evm-wallet.mjs",
     "test:activity": "node tests/activity.mjs",
     "test:payments": "node tests/payments.mjs",
@@ -20,7 +19,8 @@
     "test:registration": "node tests/registration.mjs",
     "test:feature-flow": "node tests/feature-flow.mjs",
     "test:starter-live": "node tests/starter-live.mjs",
-    "test:finance": "node tests/finance.mjs"
+    "test:finance": "node tests/finance.mjs",
+    "test:holder-access": "node tests/holder-access.mjs"
   },
   "dependencies": {
     "@fontsource/dm-sans": "^5.2.0",

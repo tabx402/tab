@@ -1,3 +1,4 @@
+import { useHolderGate } from "../lib/holder-access";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ArrowUpRight, RefreshCw } from "lucide-react";
@@ -37,6 +38,7 @@ const changedEvent = () => window.dispatchEvent(new Event("tab:wallet-actions-ch
 const positive = (value: string, decimals = 18) => { const units = financeUnits(value, decimals); if (units <= 0n) throw Error("Enter a positive amount."); return units; };
 
 export function AgentFinance({ agent, api, send, changed }: { agent: RuntimeAgent; api: AccountAPI; send: (sender: string, txs: EvmTransaction[]) => Promise<string>; changed: () => Promise<void> }) {
+  const access = useHolderGate();
   const [searchParams] = useSearchParams();
   const initialSection = groups.find(group => group.key === searchParams.get("module"))?.key || "lending";
   const [data, setData] = useState<FinanceData | null>(null);
@@ -73,7 +75,7 @@ export function AgentFinance({ agent, api, send, changed }: { agent: RuntimeAgen
   const module = data?.system.modules[financeModuleKey(action)];
   const moduleReady = module?.status === "verified" && !!module.address;
   const isRecovery = ["pool_redeem", "stock_redeem", "advance_repay", "advance_close", "stock_add_collateral", "stock_withdraw", "stock_repay", "stock_liquidate"].includes(action);
-  const allowed = ready && moduleReady && !!agent.registry_id && !!agent.wallet && !pending && !globalPending && !intent && (agent.status === "ready" || isRecovery);
+  const allowed = access.allows(action) && ready && moduleReady && !!agent.registry_id && !!agent.wallet && !pending && !globalPending && !intent && (agent.status === "ready" || isRecovery);
 
   const refresh = useCallback(async () => {
     const result = await api<FinanceData>(`/account/runtime/${agent.id}/finance`);
@@ -182,6 +184,7 @@ export function AgentFinance({ agent, api, send, changed }: { agent: RuntimeAgen
   async function prepare() {
     if (!allowed || !data) throw Error("Verify finance data and finish pending wallet actions first.");
     const body = input();
+    await access.require(action, body);
     if (needsQuote) checkedQuote();
     const next = await api<WalletActionIntent>(`/account/runtime/${agent.id}/finance/prepare`, { method: "POST", body: JSON.stringify(body) });
     changedEvent();
@@ -200,6 +203,7 @@ export function AgentFinance({ agent, api, send, changed }: { agent: RuntimeAgen
   }
   async function sign() {
     if (!intent || !expected || !data || uncertain || hash) throw Error("This action may already be submitted. Verify its transaction before signing another.");
+    await access.require(intent.action, intent.details, intent.sender);
     let safeQuote = reviewedQuote;
     if (financeAction(intent.action) === "stock_liquidate" && !data.stock_loans.loans.some(loan => loan.id === intent.details.loan_id)) safeQuote = await api<FinanceQuote>("/finance/quote", { method: "POST", body: JSON.stringify(expected) });
     validateFinanceIntent(intent, agent, data, expected, safeQuote);
@@ -223,7 +227,7 @@ export function AgentFinance({ agent, api, send, changed }: { agent: RuntimeAgen
           {data.lending.loans.length === 0 && <p className="muted">No job advances are recorded for this wallet.</p>}{data.lending.loans.map(loan => <article key={loan.id}><h4>{loan.closed ? "closed advance" : loan.accepted ? "accepted advance" : "awaiting borrower acceptance"}</h4><p className="wallet-address">{loan.id}</p><dl><div><dt>available</dt><dd>{formatAmount(loan.available)} USDT</dd></div><div><dt>owed</dt><dd>{formatAmount(loan.debt)} USDT</dd></div><div><dt>repaid</dt><dd>{formatAmount(loan.repaid)} USDT</dd></div></dl><details><summary>advance terms</summary><p>Zero interest · unsecured · expires {new Date(loan.expires_at * 1000).toLocaleString()}</p><p>{formatAmount(loan.per_call)} USDT per call · {formatAmount(loan.daily_cap)} USDT per day</p><p className="wallet-address">borrower {loan.borrower}</p><p className="wallet-address">signer {loan.signer}</p><p>tools: {loan.tools.join(", ")}</p>{loan.recipients.map(address => <p key={address} className="wallet-address">recipient {address}</p>)}</details></article>)}
         </> : section === "stocks" ? <>{data.stock_loans.loans.length === 0 && <p className="muted">No stock-loan positions are recorded for this wallet.</p>}{data.stock_loans.loans.map(loan => <article key={loan.id}><h4>{loan.symbol} collateral</h4><p className="wallet-address">{loan.id}</p><span className={`flow-badge ${loan.liquidatable ? "failure" : loan.oracle_status === "verified" ? "success" : "attention"}`}>{loan.liquidatable ? "liquidation eligible" : loan.oracle_status.replaceAll("_", " ")}</span><dl><div><dt>collateral</dt><dd>{formatAmount(loan.collateral)} {loan.symbol}</dd></div><div><dt>principal owed</dt><dd>{formatAmount(loan.debt)} USDT</dd></div><div><dt>maximum borrowing</dt><dd>{loan.maximum_borrow_usdt === null ? "price unavailable" : `${formatAmount(loan.maximum_borrow_usdt)} USDT`}</dd></div><div><dt>liquidation debt threshold</dt><dd>{loan.liquidation_debt_usdt === null ? "price unavailable" : `${formatAmount(loan.liquidation_debt_usdt)} USDT`}</dd></div></dl></article>)}</> : <article><h4>explicitly funded buyback reserve</h4><dl><div><dt>USDT available</dt><dd>{data.system.modules.buyback.status === "verified" ? `${formatAmount(data.system.modules.buyback.available_usdt)} USDT` : "awaiting verification"}</dd></div><div><dt>USDT spent</dt><dd>{data.system.modules.buyback.status === "verified" ? `${formatAmount(data.system.modules.buyback.spent_usdt)} USDT` : "awaiting verification"}</dd></div><div><dt>TAB sent to dead address</dt><dd>{data.system.modules.buyback.status === "verified" ? formatAmount(data.system.modules.buyback.tokens_burned) : "awaiting verification"}</dd></div></dl><p>Funding is irreversible. Only the configured operator can execute purchases. Existing job fees remain in their separate locked reserve. Tokens sent to the dead address remain in total supply.</p></article>}
       </div>}
-      {section === "advances" && <AdvanceRequestForm agent={agent} api={api} jobs={eligibleJobs} payments={payments} disabled={pending || globalPending || !ready} run={act} refreshed={async () => { await refresh(); setNotice("Advance request saved. No funds borrowed. The underwriter reviews its terms before approving a loan."); }} />}
+      {section === "advances" && <AdvanceRequestForm agent={agent} api={api} jobs={eligibleJobs} payments={payments} disabled={pending || globalPending || !ready || !access.allows("advance_request")} run={act} refreshed={async () => { await refresh(); setNotice("Advance request saved. No funds borrowed. The underwriter reviews its terms before approving a loan."); }} />}
       <form className="policy-fields finance-action-form" onSubmit={event => { event.preventDefault(); void act(prepare); }}>
         <label>finance action<select aria-label="finance action" value={action} disabled={pending || !!intent} onChange={event => selectAction(event.target.value as FinanceAction)}>{groups.find(group => group.key === section)!.actions.map(item => <option key={item.value} value={item.value} disabled={(item.value === "advance_approve" && !data?.roles.underwriter) || (item.value === "buyback_execute" && !data?.roles.buyback_operator)}>{item.title}</option>)}</select></label>
         {!moduleReady && <p className="field-help">{module?.reason || "Checking this module's BNB mainnet deployment."} Wallet actions stay disabled until the contract is verified.</p>}
@@ -250,7 +254,7 @@ export function AgentFinance({ agent, api, send, changed }: { agent: RuntimeAgen
         <button className="outline" disabled={!allowed || (module?.paused === true && !isRecovery)}>{pending ? "checking…" : "review finance transaction"}</button>
       </form>
       {intent && <div className="payment-quote finance-review"><h4>review {financeAction(intent.action).replaceAll("_", " ")}</h4><p>BNB mainnet · {intent.transactions.length} wallet transaction{intent.transactions.length === 1 ? "" : "s"}</p><p className="wallet-address">wallet {intent.sender}</p><p className="wallet-address">contract {intent.to}</p>{activeInput && <dl className="finance-review-terms">{Object.entries(activeInput).filter(([key]) => !["action", "registry_id", "job_onchain_id"].includes(key)).map(([key, value]) => <div key={key}><dt>{key.replaceAll("_", " ")}</dt><dd>{Array.isArray(value) ? value.join(", ") : typeof value === "object" && value !== null ? JSON.stringify(value) : String(value)}</dd></div>)}</dl>}<p className="field-help">Any token approval is limited to the exact displayed amount and this module. BNB pays network fees.</p>
-        {!hash && !uncertain && <button className="primary" disabled={pending || !ready || Date.parse(intent.expires_at) <= Date.now()} onClick={() => void act(sign)}>confirm finance in wallet</button>}
+        {!hash && !uncertain && <button className="primary" disabled={pending || !ready || Date.parse(intent.expires_at) <= Date.now() || !access.allows(intent.action, intent.details)} onClick={() => void act(sign)}>confirm finance in wallet</button>}
         {uncertain && !hash && <p className="field-help">The wallet interaction may have submitted this action. Check wallet activity and paste the transaction hash. A second submission stays blocked.</p>}
         <label>submitted finance transaction hash<input aria-label="finance transaction hash" value={hash} onChange={event => setHash(event.target.value)} placeholder="0x…" spellCheck={false} /></label><button className="outline" disabled={pending || !validHash(hash)} onClick={() => void act(() => confirm(hash))}>verify finance transaction</button>
         {hash && <><button className="outline" disabled={pending || !validHash(hash)} onClick={() => void act(async () => { await recordSubmitted(api, `/account/wallet-actions/${intent.id}/submitted`, hash); await api(`/account/wallet-actions/${intent.id}/release-failed`, { method: "POST" }); remember(storageKey, null); setIntent(null); setExpected(null); setHash(""); setUncertain(false); setNotice("Failed finance transaction verified. Review a new action when ready."); changedEvent(); await refresh(); })}>check failed finance transaction</button><a className="text-link" href={explorer(hash)} target="_blank" rel="noreferrer">view finance transaction <ArrowUpRight size={13} /></a></>}
@@ -274,7 +278,9 @@ function AdvanceRequestForm({ agent, api, jobs, payments, disabled, run, refresh
   const [isPublic, setPublic] = useState(false);
   const job = jobs.find(item => item.id === jobId);
   const merchants = (payments?.merchants || []).filter(merchant => merchant.settlement_enabled && job?.root_services.some(service => (job.services || []).includes(service.id) && sameAddress(service.recipient, merchant.recipient)));
+  const access = useHolderGate();
   async function create() {
+    await access.require("advance_request");
     const principal = positive(amount), per = positive(perCall), cap = positive(daily);
     const expiresAt = Math.floor(Date.parse(expires) / 1000);
     if (!job || !isAddress(signer, { strict: false }) || !tools.length || !recipients.length || !Number.isFinite(expiresAt) || expiresAt <= Date.now() / 1000 || expiresAt > Date.parse(job.deadline) / 1000 || expiresAt > Date.now() / 1000 + 31 * 86400) throw Error("Choose a funded assigned job, signer, allowed tools/recipients and an expiry before the job deadline.");

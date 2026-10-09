@@ -1,0 +1,56 @@
+{
+  "pilot": "tab-bnb56-finance-pilot-100-usdt-v1",
+  "status": "agent_stage_confirmed_pool_blocked",
+  "chain_id": 56,
+  "source": "0x00e128e7779ea927a087b40ade268dedc1b34a90",
+  "protocol": "0xbe2c140c0b40d25ef5531d93c0696318319e6375",
+  "plan_hash": "0xcb72ed8d773c1b3d834d966b59c0915101b4bb16d60fe6d251be5a709017f5ad",
+  "transactions": [
+    {
+      "key": "approve",
+      "hash": "0xbc1306d95d35fda871b181c893bd3e91928fd1363184e3d60be4c3eb6ade5733",
+      "block_number": "126564643",
+      "block_hash": "0xf6f1da0327c8d5d6f54a5dc8baa84b2050588dd962dda9b870e570de01722d1b",
+      "gas_cost_wei": "2310300000000"
+    },
+    {
+      "key": "finch",
+      "hash": "0x22914fdc8bf69c5d2c932984e087da7c2ba53f90dcf5a8ceea66d160460311e1",
+      "block_number": "126564657",
+      "block_hash": "0xde5b43c1d3a939e71244ebb3aecc78e6c92a968c46ef4fc04f2ce9c05ce75cbb",
+      "gas_cost_wei": "6929000000000"
+    },
+    {
+      "key": "wren",
+      "hash": "0x8bef100f10c92ba65cf9dc5cde7033993b2daeb1bdd76c3563e3682af4dcbf90",
+      "block_number": "126564671",
+      "block_hash": "0x7d2d42ea8f30d4b5bf7eb8d36eae1f92fcd00dbac81b044a51c04bdedf95e648",
+      "gas_cost_wei": "4979000000000"
+    }
+  ],
+  "funded_agent_usdt": "20",
+  "pool_usdt_allocated": "0",
+  "pool_usdt_reserved_in_plan": "80",
+  "pool_reserve_is_escrowed": false,
+  "gas_cost_wei": "14218300000000",
+  "remaining_pilot_gas_ceiling_wei": "985781700000000",
+  "source_balance_usdt": "128.164843360590102386",
+  "spending": [
+    {
+      "agent": "0x00e128e7779ea927a087b40ade268dedc1b34a900c6a4b0bb186f1cb77aa9aee",
+      "available": "10000000000000000000",
+      "totalFunded": "10000000000000000000",
+      "totalSpent": "0",
+      "totalWithdrawn": "0"
+    },
+    {
+      "agent": "0x00e128e7779ea927a087b40ade268dedc1b34a90424648c0b9e033324821614c",
+      "available": "10000000000000000000",
+      "totalFunded": "10000000000000000000",
+      "totalSpent": "0",
+      "totalWithdrawn": "0"
+    }
+  ],
+  "payment_scope": "Contract spending balances; these do not fund wallet-based x402 Permit2 payments.",
+  "verified_at": "2026-10-09T03:34:33.916Z"
+}

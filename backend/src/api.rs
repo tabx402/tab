@@ -7,6 +7,7 @@ use crate::{
     AppState,
 };
 use axum::{
+    body::Bytes,
     extract::{Path, Query, State},
     http::{header, StatusCode},
     middleware::{self, Next},
@@ -20,6 +21,7 @@ use serde_json::{json, Value};
 
 pub fn router(state: AppState) -> Router {
     Router::new()
+        .merge(crate::holder_access::routes())
         .route("/api/health", get(health))
         .route("/api/config", get(config))
         .route(
@@ -156,6 +158,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/account/jobs", get(account_jobs))
         .route("/api/account/job-actions", get(job_actions))
         .route("/api/account/jobs/{id}", get(account_job))
+        .route("/api/account/jobs/{id}/run", post(run_job))
+        .route("/api/account/jobs/{id}/runs", get(job_runs))
         .route("/api/account/runtime/{id}/jobs", post(create_job))
         .route("/api/account/jobs/{id}/branches", post(create_branch))
         .route(
@@ -167,6 +171,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/account/job-actions/{id}/confirm", post(confirm_job))
         .route("/api/account/jobs/{id}/refresh", post(refresh_job))
         .route("/api/agent/jobs", get(builder_jobs))
+        .route("/api/agent/jobs/{id}/run", post(builder_run_job))
+        .route("/api/agent/jobs/{id}/runs", get(builder_job_runs))
         .route("/api/agent/jobs/{id}/branches", post(builder_branch))
         .route("/api/agent/jobs/{id}/evidence", post(builder_evidence))
         .route("/api/bnb/transactions/{signature}", get(transaction_status))
@@ -174,6 +180,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/openapi.json", get(openapi))
         .route("/api/docs", get(docs))
         .layer(axum::extract::DefaultBodyLimit::max(32_768))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::holder_access::guard,
+        ))
         .layer(middleware::from_fn(private_cache))
         .with_state(state)
 }
@@ -203,6 +213,7 @@ async fn health(State(state): State<AppState>) -> Result<Json<Health>> {
 async fn config(State(state): State<AppState>) -> Json<PublicConfig> {
     let sponsorship = state.sponsorship().await;
     Json(PublicConfig {
+        holder_access_enabled: state.holder_access_enabled,
         app_id: state.config.app_id.clone(),
         financial_actions_enabled: state.bnb.deployed().await,
         contracts_status: if state.bnb.deployed().await {
@@ -256,26 +267,11 @@ async fn public_run_receipt(
 async fn providers(State(state): State<AppState>) -> Json<Vec<Provider>> {
     Json(state.providers().await)
 }
-#[derive(Deserialize, Default)]
-struct OverviewQuery {
-    mode: Option<String>,
-}
-async fn overview(Query(query): Query<OverviewQuery>) -> Result<Json<PublicData>> {
-    if query
-        .mode
-        .as_deref()
-        .is_some_and(|m| !["public", "example"].contains(&m))
-    {
-        return Err(ApiError::validation("Choose public or example mode."));
-    }
-    // Illustrated activity is removed from the primary economic feed.
-    Ok(Json(PublicData {
-        mode: query.mode.unwrap_or_else(|| "public".into()),
-        summary: Summary::default(),
-        agents: vec![],
-        receipts: vec![],
-        series: vec![],
-    }))
+async fn overview() -> Result<Json<Value>> {
+    Err(ApiError(
+        StatusCode::GONE,
+        "This activity overview has been retired. Use /api/registry, /api/agents/live, /api/activity or /api/metrics for actual records.".into(),
+    ))
 }
 async fn plans(State(state): State<AppState>, Owner(owner): Owner) -> Result<Json<Vec<AgentPlan>>> {
     Ok(Json(state.store.list_plans(&owner)?))
@@ -428,14 +424,33 @@ async fn run(
     State(state): State<AppState>,
     Owner(owner): Owner,
     Path(id): Path<String>,
+    body: Bytes,
 ) -> Result<Json<AgentRun>> {
-    Ok(Json(state.run_agent(&owner, &id).await?))
+    let input = parse_run_input(&body)?;
+    Ok(Json(
+        state
+            .run_agent_with_delivery(&owner, &id, input.quote_id.as_deref())
+            .await?,
+    ))
 }
 async fn builder_run(
     State(state): State<AppState>,
     Builder(owner, id): Builder,
+    body: Bytes,
 ) -> Result<Json<AgentRun>> {
-    Ok(Json(state.run_agent(&owner, &id).await?))
+    let input = parse_run_input(&body)?;
+    Ok(Json(state.run_agent_with_delivery(&owner, &id, input.quote_id.as_deref()).await?))
+}
+fn parse_run_input(body: &[u8]) -> Result<RunInput> {
+    let input: RunInput = if body.is_empty() {
+        RunInput::default()
+    } else {
+        serde_json::from_slice(body).map_err(|_| ApiError::bad("Expected an optional paid response quote_id."))?
+    };
+    if input.quote_id.as_deref().is_some_and(|id| id.is_empty() || id.len() > 128) {
+        return Err(ApiError::bad("Invalid paid response quote_id."));
+    }
+    Ok(input)
 }
 async fn runs(
     State(state): State<AppState>,
@@ -787,6 +802,20 @@ async fn account_job(
 ) -> Result<Json<Job>> {
     Ok(Json(state.get_job(&owner, &id)?))
 }
+async fn run_job(
+    State(state): State<AppState>,
+    Owner(owner): Owner,
+    Path(id): Path<String>,
+) -> Result<Json<crate::job_execution::JobRun>> {
+    Ok(Json(state.run_job(&owner, &id).await?))
+}
+async fn job_runs(
+    State(state): State<AppState>,
+    Owner(owner): Owner,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<crate::job_execution::JobRun>>> {
+    Ok(Json(state.job_runs(&owner, &id)?))
+}
 async fn create_job(
     State(state): State<AppState>,
     Owner(owner): Owner,
@@ -906,6 +935,28 @@ async fn builder_evidence(
         ));
     }
     Ok(Json(state.collect_evidence(&owner, &id).await?))
+}
+async fn builder_run_job(
+    State(state): State<AppState>,
+    Builder(owner, agent_id): Builder,
+    Path(id): Path<String>,
+) -> Result<Json<crate::job_execution::JobRun>> {
+    let job = state.get_job(&owner, &id)?;
+    if job.plan.executor_id != agent_id {
+        return Err(ApiError::forbidden("This access key is not the assigned executor."));
+    }
+    Ok(Json(state.run_job(&owner, &id).await?))
+}
+async fn builder_job_runs(
+    State(state): State<AppState>,
+    Builder(owner, agent_id): Builder,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<crate::job_execution::JobRun>>> {
+    let job = state.get_job(&owner, &id)?;
+    if job.plan.executor_id != agent_id {
+        return Err(ApiError::forbidden("This access key is not the assigned executor."));
+    }
+    Ok(Json(state.job_runs(&owner, &id)?))
 }
 async fn transaction_status(
     State(state): State<AppState>,

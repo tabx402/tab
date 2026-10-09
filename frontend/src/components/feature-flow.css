@@ -13,7 +13,6 @@
 .starter-input-row { display: flex; align-items: stretch; gap: 10px; }
 .starter-input-row input { flex: 1; min-width: 0; margin: 0; font-family: "IBM Plex Mono", monospace; font-size: 12px; border-color: #4c697d; background: #0d1b28; }
 .starter-input-row .primary { flex: 0 0 auto; white-space: nowrap; }
-.starter-wallet .starter-example { margin-top: 14px; font-size: 11px; }
 .starter-result { margin-top: 24px; border-top: 1px solid #3b596b; padding-top: 20px; }
 .starter-result-top { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; }
 .starter-result-top > span:last-child { font-size: 10px; color: #a9c0d0; }
@@ -70,3 +69,5 @@
   .run-receipt { padding: 16px; }
 }
 @media (prefers-reduced-motion: reduce) { .flow-spin { animation: none; } }
+
+.receipt-paid-data { max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.65 "IBM Plex Mono", monospace; border: 1px solid var(--line); border-radius: 6px; padding: 12px; background: #091521; margin: 12px 0; }

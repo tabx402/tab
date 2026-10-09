@@ -1,0 +1,84 @@
+{
+  "pilot": "tab-bnb56-finance-pilot-100-usdt-v1",
+  "stage": "agent_spending_only",
+  "chain_id": 56,
+  "from": "0x00e128e7779ea927a087b40ade268dedc1b34a90",
+  "usdt": "0x55d398326f99059ff775485246999027b3197955",
+  "protocol": "0xbe2c140c0b40d25ef5531d93c0696318319e6375",
+  "manifest_hash": "0x9a15404da150d1e79c03376927ac8ccf51105da8bdfd6938825c12d3ff54a98d",
+  "approved_total_usdt": "100",
+  "stage_usdt": "20",
+  "reserved_pool_usdt": "80",
+  "pool": {
+    "status": "blocked",
+    "address": null,
+    "reason": "A compatible holder-restricted collateralized pool and verified official TAB token are required."
+  },
+  "maximum_total_gas_wei": "1000000000000000",
+  "nonce": 16,
+  "gas_price_wei": "50000000",
+  "transactions": [
+    {
+      "key": "approve",
+      "to": "0x55d398326f99059ff775485246999027b3197955",
+      "gas": "100000",
+      "data": "0x095ea7b3000000000000000000000000be2c140c0b40d25ef5531d93c0696318319e6375000000000000000000000000000000000000000000000001158e460913d00000",
+      "nonce": 16,
+      "value": "0",
+      "gas_price_wei": "50000000"
+    },
+    {
+      "key": "finch",
+      "to": "0xbe2c140c0b40d25ef5531d93c0696318319e6375",
+      "gas": "180000",
+      "data": "0x9d964c0800e128e7779ea927a087b40ade268dedc1b34a900c6a4b0bb186f1cb77aa9aee0000000000000000000000000000000000000000000000008ac7230489e80000",
+      "nonce": 17,
+      "value": "0",
+      "gas_price_wei": "50000000"
+    },
+    {
+      "key": "wren",
+      "to": "0xbe2c140c0b40d25ef5531d93c0696318319e6375",
+      "gas": "180000",
+      "data": "0x9d964c0800e128e7779ea927a087b40ade268dedc1b34a90424648c0b9e033324821614c0000000000000000000000000000000000000000000000008ac7230489e80000",
+      "nonce": 18,
+      "value": "0",
+      "gas_price_wei": "50000000"
+    }
+  ],
+  "agents": [
+    {
+      "key": "finch",
+      "id": "0x00e128e7779ea927a087b40ade268dedc1b34a900c6a4b0bb186f1cb77aa9aee",
+      "name": "tab demo finch",
+      "policyHash": "0x5817f84ddc31eab6cec283cdfc19889679cf9c7ffb31e04b71a0e40116370f93",
+      "amount_usdt": "10"
+    },
+    {
+      "key": "wren",
+      "id": "0x00e128e7779ea927a087b40ade268dedc1b34a90424648c0b9e033324821614c",
+      "name": "tab demo wren",
+      "policyHash": "0x1768b3646da1b407db51fa4b4578382a27ce2dc2500bbca3b07323ad8d930f50",
+      "amount_usdt": "10"
+    }
+  ],
+  "observed_block": "126564451",
+  "observed_block_hash": "0x2b149aff8cd8eae40fd999ab92a71946140a9acec565c7680f7a1a0dfcb8d683",
+  "initial_spending": [
+    {
+      "available": "0",
+      "totalFunded": "0",
+      "totalSpent": "0",
+      "totalWithdrawn": "0"
+    },
+    {
+      "available": "0",
+      "totalFunded": "0",
+      "totalSpent": "0",
+      "totalWithdrawn": "0"
+    }
+  ],
+  "created_at": "2026-10-09T03:32:49.875Z",
+  "automatic_topups": false,
+  "payment_scope": "Contract spending balances; these do not fund wallet-based x402 Permit2 payments."
+}

@@ -4,11 +4,11 @@ import { useLocation } from "react-router-dom";
 
 // Reveal independent pieces; avoid fading a parent and all its children together.
 const selector = [
-  ".landing-hero-copy > *", ".landing-scroll", ".landing-copy > *", ".landing-demo", ".landing-section-heading > *", ".landing-control-grid > *", ".landing-tool-list > *", ".landing-questions > h2", ".landing-faq > *", ".landing-end > *",
+  ".landing-hero-copy > *", ".landing-scroll", ".landing-copy > *", ".landing-section-heading > *", ".landing-control-grid > *", ".landing-tool-list > *", ".landing-questions > h2", ".landing-faq > *", ".landing-end > *",
   ".landing-doc-links > *", ".docs-content > section", ".end-blooms",
   ".hero > div:first-child > *", ".hero-art",
   ".page-intro > div:first-child > *", ".page-intro > :not(div:first-child)",
-  ".creation-preview > *", ".section-line", ".filter-row > *", ".note-line", ".back-link", ".metric", ".chart-panel > *", ".loop-panel > :not(.flow-list)", ".flow-list > *",
+  ".section-line", ".filter-row > *", ".note-line", ".back-link", ".metric", ".chart-panel > *", ".loop-panel > :not(.flow-list)", ".flow-list > *",
   ".agents-panel > .panel-heading", ".agents-panel .empty", ".agents-panel thead", ".agents-panel tbody tr", ".terminal > *", ".explain-section > *",
   ".provider-card", ".backing-grid > *", ".detail-grid > *",
   ".account-grid > *", ".account-welcome > *", ".agent-builder", ".workspace-heading", ".owned-agent", ".agent-controls", ".account-signin", ".live-activity > .panel-heading", ".overview-actions > *",

@@ -1,3 +1,4 @@
+import { FixtureHolderAccess } from "./holder-access-fixture-policy";
 import { NoWalletSubmissionError } from "../src/lib/evm";
 import { createRoot } from "react-dom/client";
 import "@fontsource/dm-sans/400.css";
@@ -10,4 +11,4 @@ import "../src/styles.css";
 import "../src/components/action-colors.css";
 const agent={id:"agent-a",name:"QA agent",purpose:"local fixture",wallet:"0x1111111111111111111111111111111111111111",registry_id:"0x"+"1".repeat(64),status:"ready",daily_cap:"5",max_call:"1",tools:["x402"],cadence:"manual"} as RuntimeAgent;
 const send=async()=>{const mode=localStorage.getItem("qa:credit-send-mode");if(mode==="preflight")throw new NoWalletSubmissionError(Error("Connect the wallet that owns this agent."));if(mode==="rejected")throw Object.assign(Error("Wallet request rejected."),{code:4001});if(mode==="unknown")throw Error("RPC response lost.");document.body.dataset.sends=String(Number(document.body.dataset.sends||"0")+1);return "0x"+"a".repeat(64);};
-createRoot(document.getElementById("root")!).render(<main><section className="panel"><p>local payment QA · no funds</p><AgentPayments agent={agent} api={request} live send={send} sign={async()=>{document.body.dataset.signs=String(Number(document.body.dataset.signs||"0")+1);return "0x"+"a".repeat(130);}} changed={async()=>{}}/><AgentCredit agent={agent} owned={[agent]} api={request} live send={send} changed={async()=>{}}/></section></main>);
+createRoot(document.getElementById("root")!).render(<FixtureHolderAccess><main><section className="panel"><p>local payment QA · no funds</p><AgentPayments agent={agent} api={request} live send={send} sign={async()=>{document.body.dataset.signs=String(Number(document.body.dataset.signs||"0")+1);return "0x"+"a".repeat(130);}} changed={async()=>{}}/><AgentCredit agent={agent} owned={[agent]} api={request} live send={send} changed={async()=>{}}/></section></main></FixtureHolderAccess>);

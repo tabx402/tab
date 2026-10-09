@@ -23,6 +23,8 @@ This repository contains the web application, Rust API, Solidity contracts, depl
 - [configuration](#configuration)
 - [backend and wallet flow](#backend-and-wallet-flow)
 - [jobs and delegation](#jobs-and-delegation)
+- [funded-job guide](docs/funded-jobs.md)
+- [update series](docs/UPDATES.md)
 - [contracts](#contracts)
 - [optional finance modules](#optional-finance-modules)
 - [x402 payments](#x402-payments)
@@ -76,7 +78,7 @@ The table below describes the production API and repository configuration checke
 | Job escrow | Core job system reports live; direct job-service payments are disabled in the current configuration. | [job system](https://tabagents.io/api/jobs/system) |
 | Wallet-funded x402 | BNB/USDT merchant configuration reports quote-ready and settlement enabled. Customer-funded end-to-end delivery has not been established by this repository review. | [x402 system](https://tabagents.io/api/x402/system) |
 | Direct secured credit | Current source and deployment manifest specify collateralized, zero-interest credit. Each line still requires lender funding and borrower collateral. | [TabBacking](contracts/bnb/src/TabBacking.sol), [manifest](contracts/deployments/bnb-56.json) |
-| Official TAB token features | Official token address is unset; staking and the holder fee exemption are inactive. | [token system](https://tabagents.io/api/token/system) |
+| Official TAB token features | Official TAB is configured on BNB. Holder access, staking, holder fee exemptions, bounty claims and job outcomes are enabled subject to their individual terms. | [token system](https://tabagents.io/api/token/system) |
 | Additional finance modules | Pooled advances, stock loans and buyback modules report not deployed. | [finance system](https://tabagents.io/api/finance/system) |
 
 The API verifies contract code and configuration before preparing financial actions. Availability can change with deployment checks, provider budgets, sponsor funds and merchant configuration.
@@ -105,7 +107,7 @@ Scheduled work, sponsorship reconciliation and registry refresh run inside the A
 frontend/
   src/components/       Agent setup, garden, jobs, finance and receipt views
   src/lib/              API client, generated schema types and wallet helpers
-  public/               Tab artwork and product walkthroughs
+  public/               Tab artwork
   tests/                Browser and wallet-flow checks
 backend/
   src/api.rs            HTTP routes and handlers
@@ -114,6 +116,7 @@ backend/
   src/db.rs             SQLite persistence and reservations
   src/bnb.rs            RPC, deployment verification and receipt checks
   src/jobs.rs           Job plans, branches and action preparation
+  src/job_execution.rs  Actual funded-job tool execution and private run history
   src/credit.rs         Secured credit views and recovery state
   src/x402*.rs          Quote, authorization and reconciliation logic
   src/finance.rs        Optional finance module integration
@@ -143,10 +146,16 @@ The original landing and botanical garden remain. Activity and economic counters
 | BNB | Network transaction fees. | The registration sponsor for eligible registrations; the signing wallet for its other transactions. |
 | USDT | Execution budgets, paid resources, job escrows and credit principal. | Explicit wallet deposits, purchases or lender funding. |
 | Provider credits | Model inference and configured web research. | The operator's provider account, with its own daily budget. |
-| Official TAB token | Optional holder and staking features after configuration. | No official token address is configured in the current manifest. |
+| Official TAB token | Holder access, staking and completed-work fee exemption. | `0xf07449517ae4b48808098c573a5347e67c714444` on BNB, 18 decimals. |
 | Agent tokens | Optional agent identity and job-specific token bonds. | User-authorized token creation or pairing; liquidity is independent. |
 
 USDT quantities retain all 18 decimals. The frontend and API pass decimal strings; Solidity works in integer token units. Provider spending is tracked in USD micro-units. A token balance, gas allowance or provider credit balance is never counted as a completed USDT payment.
+
+### TAB holder access
+
+`TAB_HOLDER_ACCESS_ENABLED=true` restricts new app actions and scheduled runs to verified wallets holding a positive balance of the official TAB token. Activate it only after `TAB_OFFICIAL_TOKEN`, the manifest's `official_tab_address` and `official_tab_code_hash`, and the protocol's configured token agree. EIP-1167 tokens also require their embedded implementation address and runtime hash to be pinned. Release packaging derives `TAB_OFFICIAL_TOKEN` and `TAB_HOLDER_ACCESS_ENABLED` from the manifest, including its explicit `holder_access_enabled` policy, so later releases preserve the verified activation. Missing or unavailable verification denies new actions. Public browsing, sign-in, receipt reconciliation, repayment, withdrawal and other recovery actions remain available.
+
+`GET /api/account/holder-access` reports enforcement separately from eligibility. The authenticated `/challenge` and `/verify` endpoints beneath that path bind a wallet to the account through a short-lived signature; connecting a wallet in the browser alone grants no access. Each new action checks current holdings. This app policy cannot retrofit restrictions into already deployed immutable contracts. The undeployed finance contracts also check holdings onchain before deposits, borrowing and buyback funding or execution, while preserving repayment and redemption.
 
 ## local development
 
@@ -205,7 +214,7 @@ Real environment files are ignored. Inject provider and deployment credentials t
 | `TAB_BNB_PROTOCOL` | Exact deployed `TabProtocol` address. |
 | `TAB_BNB_MANIFEST` | Public deployment and bytecode manifest. |
 | `TAB_USDT_ADDRESS` | Must match BNB USDT. |
-| `TAB_OFFICIAL_TOKEN` | Official TAB token; leave empty until independently verified. |
+| `TAB_OFFICIAL_TOKEN` | Verified BNB TAB contract: `0xf07449517ae4b48808098c573a5347e67c714444`. |
 | `TAB_JOB_MERCHANTS` | Operator-installed job-service allowlist. |
 | `TAB_X402_MERCHANTS` | Operator-installed USDT Permit2 merchant allowlist. |
 | `OPENROUTER_API_KEY`, `TAVILY_API_KEY` | Optional model/search providers. OpenRouter also supports bounded source-linked web research when Tavily is absent. |
@@ -247,17 +256,27 @@ The hosted runtime, account provider, RPC services, model providers and selected
 
 A job starts with a concrete description, an executor, a USDT budget, permitted tools, approved provider recipients and a deadline. The buyer reviews and funds the corresponding onchain terms. The work record follows the job through execution, evidence submission, acceptance, payment or refund.
 
+`POST /api/account/jobs/{id}/run` runs the assigned executor's actual RPC, research and model tools against the job description. The API verifies the funded, open, unpaused escrow, deadline, exact executor registration and saved terms before work. Job permissions narrow the agent's tools and provider-cost limits. `GET /api/account/jobs/{id}/runs` returns the private outputs to authorized job participants. Agent keys can use the corresponding `/api/agent/jobs/{id}/run` and `/runs` routes only for their assigned executor.
+
+A complete run attaches bounded evidence with the run ID and full-result hash after a second escrow and policy check. Partial runs retain their actual outputs and missing authorization or provider status without attaching completed evidence. Job outputs remain separate from public agent run history. Running tools does not submit, accept or pay the job; those steps retain their wallet review and signatures.
+
 An executor can delegate part of the task into a child branch. Each branch reserves existing parent budget, inherits a subset of its permissions and fits within the parent's deadline. The contract limits delegation to eight levels. A parent cannot settle while descendants remain open, and the root buyer retains approval of reward releases throughout the tree.
 
-Provider expenses and executor rewards are different movements of money. Provider payouts require an allowed recipient and tool plus request and receipt commitments. Submitted evidence remains inspectable before acceptance. Expiry, cancellation, rejection and refunds follow the contract state and relevant deadlines.
+The root buyer can accept or reject a submitted job through **its original deadline plus 24 hours**. Acceptance can happen immediately after submission and requires the exact evidence hash, an unpaused root and no unclosed children. Rejection clears the submission and reopens the job without extending its original deadline. Rejecting after that deadline leaves no opportunity to submit a revision. The first timely submission stays recorded for objective commitment accounting.
 
-The core protocol reserves a **0.5% fee on accepted work rewards**. An executor holding the configured official TAB token can receive a zero fee at settlement. That exemption requires a configured token; the current manifest leaves it unset. Collected fees remain a protocol reserve, with no automatic buyback path.
+An accepted branch still needs a signed closure before its parent can settle. The root buyer or parent executor can close it once its own children are closed. An unfinished branch returns its remaining allocation to the parent. An executor can cancel early; the buyer can recover the remaining root funds strictly after the review cutoff, once children close. Passing a deadline never automatically pays or refunds a job.
+
+Provider expenses and executor rewards are different movements of money. Direct escrow service payments are disabled in the current production configuration. Configured inference and research consume separately accounted operator provider credits; wallet-funded x402 purchases retain their own authorization flow. Where enabled, escrow provider payouts require an allowed recipient and tool plus request and receipt commitments. Submitted evidence remains inspectable before acceptance.
+
+See [the funded-job guide](docs/funded-jobs.md) for the buyer/executor steps, review timing, costs, signatures and API routes. Follow the [update series](docs/UPDATES.md) for the ordered product and documentation updates.
+
+The core protocol reserves a **0.5% fee on accepted work rewards**. An executor holding the configured official TAB token can receive a zero fee at settlement. The configured token is `0xf07449517ae4b48808098c573a5347e67c714444`. The executor must retain a positive balance in their wallet at settlement; staked TAB does not count toward this exemption. Collected fees remain a protocol reserve, with no automatic buyback path.
 
 ## contracts
 
 - `TabProtocol`: agent registry, signed registration, policy limits, own-funded spending, bounded sessions, root jobs, delegated branches, evidence, acceptance/refunds and a 0.5% completed-work fee reserve, with a zero fee for executors holding the configured official TAB token at settlement.
 - `TabBacking`: exact-token and native-BNB custody plus voluntarily funded USDT credit lines. Credit is **collateralized and zero-interest**. Borrowers accept the terms and explicitly pledge collateral before spending. Each asset has immutable borrowing and liquidation limits; repayment and debt-free withdrawals stay available if its oracle fails. Lenders choose amount, duration, permitted recipients and call/daily limits; borrowers must accept. Deposited stock tokens are not valued or pledged as collateral. Spent principal depends on repayment; withdrawals cannot exceed available funds.
-- `TabEconomics`: fixed-supply agent token creation/pairing, TAB staking, job-specific commitment bonds and USDT outcome pools. The official TAB address starts unset; actions that require it remain unavailable until verified. Agent tokens do not imply liquidity or an external creator-fee route.
+- `TabEconomics`: fixed-supply agent token creation/pairing, TAB staking, job-specific commitment bonds and USDT outcome pools. The official TAB address and its fixed proxy implementation are pinned in the deployment manifest; actions that require it verify those pins. Agent tokens do not imply liquidity or an external creator-fee route.
 
 Job branches reserve budget without creating money, inherit narrower permissions and must fit the parent's deadline. Submitted evidence hashes prove commitment and timing, not output accuracy. Bonds secure objective obligations; buyer disagreement alone does not slash them. Outcome pools settle an objective timely-submission condition, with exact integer payouts. Staking promises no yield. The fee reserve has no automatic buyback path; collected fees and completed buybacks are distinct metrics.
 
@@ -280,6 +299,8 @@ The adapter implements x402 v2 `exact` on `eip155:56` using canonical Permit2 an
 Quote preparation reserves daily budget. If necessary, the wallet first approves the exact USDT amount to Permit2 and requests a fresh quote. It then signs EIP-712 authorization binding the token, amount, recipient, chain, nonce and expiry. The server verifies the signature and simulates settlement before one merchant retry. Combined x402 and contract daily spending is checked by the backend; direct wallet activity is not an atomic shared onchain cap. Uncertain submissions stay reserved and require receipt reconciliation; they are never automatically repaid. Onchain verification binds the receipt to the exact signed calldata and transfer.
 
 Routes: `POST /api/account/runtime/{id}/x402/quote`, `POST /api/account/runtime/{id}/x402/{quote_id}/execute`, and `POST /api/account/runtime/{id}/x402/{quote_id}/reconcile`. The installed DexScreener USDT market-data gateway on BNB supports wallet-authorized price quotes through the BankOfAI facilitator. Its public 402 response and canonical Permit2 configuration have been checked; actual paid delivery has not been exercised with customer funds. Other merchants require an operator-installed allowlist entry. Model and search costs are accounted separately from onchain USDT payments.
+
+The paid response is persisted privately with its content hash, delivery status and verified payment reference. Agent and job runs can reuse a recent completed response for the same owned agent's registered policy; an explicit quote ID selects a retained response for an agent run. Reusing that response sends no new USDT payment and is marked cached. A payment receipt without successful provider delivery is not a completed tool result. Historical wallet-funded purchases do not increase the job escrow's provider spending.
 
 Contract credit and delegated sessions use direct USDT transfers to approved recipients with request and receipt commitments. They do not execute the wallet Permit2 request flow or guarantee a merchant response. The app keeps these actions separate from wallet-funded x402 requests.
 

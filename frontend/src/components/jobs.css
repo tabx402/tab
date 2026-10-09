@@ -61,3 +61,9 @@
 .job-evidence-input { margin: 18px 0; }
 .job-evidence-input label { display: grid; gap: 8px; }
 .job-evidence-input textarea { min-height: 100px; }
+
+.job-runs { margin: 22px 0; min-width: 0; }
+.job-runs > h4 { margin-bottom: 12px; }
+.job-run { min-width: 0; border-top: 1px solid var(--line); padding-top: 14px; }
+.job-run + .job-run { margin-top: 16px; }
+.job-run .run-receipt { border: 0; padding: 0; }
