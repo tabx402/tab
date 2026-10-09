@@ -15,7 +15,8 @@ import { minimumAmount, usdtUnits } from "../lib/amounts";
 import "./jobs.css";
 
 
-type AgentChoice = { id: string; name: string; tools: string[]; status: string };
+type AgentChoice = Pick<RuntimeAgent, "id" | "name" | "tools" | "status" | "max_call" | "daily_cap" | "wallet" | "registry_id" | "registry_address">;
+const localJobTime = (milliseconds: number) => { const value = new Date(milliseconds); return new Date(value.getTime() - value.getTimezoneOffset() * 60e3).toISOString().slice(0, 19); };
 const label = (value: string) => value.replaceAll("_", " ");
 const shortDate = (value: string) => new Date(value).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 const REVIEW_SECONDS = 86400;
@@ -69,40 +70,63 @@ export function AgentPublicJobs({ id }: { id: string }) {
   return <section className="panel agent-public-jobs"><div className="panel-heading"><h2>jobs</h2><Link to="/account" className="text-link">manage yours <ArrowUpRight size={13} /></Link></div>{error ? <p className="field-help">{error}</p> : assigned.length ? assigned.map((job) => <PublicJobRow key={job.id} job={job} jobs={jobs} />) : <p className="field-help">No public job agreements for this agent yet.</p>}</section>;
 }
 
-function JobForm({ agent, choices, parent, merchants, onSave, onCancel, busy }: { agent: RuntimeAgent; choices: AgentChoice[]; parent: Job | null; merchants: JobMerchant[]; onSave: (input: JobInput) => Promise<void>; onCancel: () => void; busy: boolean }) {
+function JobForm({ agent, choices, parent, merchants, system, onSave, onCancel, busy }: { agent: RuntimeAgent; choices: AgentChoice[]; parent: Job | null; merchants: JobMerchant[]; system: JobSystem | null; onSave: (input: JobInput) => Promise<void>; onCancel: () => void; busy: boolean }) {
+  const sharedTools = (candidate: AgentChoice) => agent.tools.filter((tool) => (!parent || parent.tools.includes(tool)) && candidate.tools.includes(tool));
+  const candidates = choices.filter((candidate) => candidate.status === "ready" && candidate.wallet && candidate.registry_id && (!system?.escrow || candidate.registry_address.toLowerCase() === system.escrow.toLowerCase()) && sharedTools(candidate).length && (usdtUnits(candidate.max_call) ?? 0n) > 0n);
+  const initialExecutor = candidates.find((candidate) => candidate.id !== agent.id) ?? candidates[0];
   const [title, setTitle] = useState(""), [description, setDescription] = useState("");
-  const [executor, setExecutor] = useState(choices.find((a) => a.status === "ready" && a.id !== agent.id)?.id ?? agent.id);
-  const [budget, setBudget] = useState(minimumAmount(parent?.available ?? String(agent.daily_cap), parent ? "1" : "5"));
-  const [maxCall, setMaxCall] = useState(minimumAmount(agent.max_call, parent?.max_call ?? "0.1"));
-  const [deadline, setDeadline] = useState(() => { const value = new Date(Math.min(Date.now() + 3600e3, parent ? new Date(parent.deadline).getTime() - 60e3 : Infinity)); return new Date(value.getTime() - value.getTimezoneOffset() * 60e3).toISOString().slice(0, 16); });
+  const [executor, setExecutor] = useState(initialExecutor?.id ?? "");
+  const budgetLimit = parent ? minimumAmount(parent.available, agent.daily_cap) : agent.daily_cap;
+  const [budget, setBudget] = useState(minimumAmount(budgetLimit, parent ? "1" : "5"));
+  const [maxCall, setMaxCall] = useState(minimumAmount(budget, agent.max_call, initialExecutor?.max_call ?? "0", parent?.max_call ?? "0.1"));
+  const [deadline, setDeadline] = useState(() => localJobTime(Math.min(Date.now() + 3600e3, parent ? Date.parse(parent.deadline) : Infinity)));
   const [acceptance] = useState<JobInput["acceptance"]>("buyer_review"), [minimumBlock] = useState(parent?.minimum_block ?? 1);
-  const [tools, setTools] = useState<JobInput["tools"]>(["bnb-rpc"]), [services, setServices] = useState<string[]>([]), [error, setError] = useState("");
-  const target = choices.find((a) => a.id === executor);
-  const allowed = agent.tools.filter((tool) => (!parent || parent.tools.includes(tool as JobInput["tools"][number])) && target?.tools.includes(tool));
-  const budgetLimit = parent?.available ?? String(agent.daily_cap);
-  const callLimit = minimumAmount(budget, agent.max_call, parent?.max_call ?? "10");
+  const initialTools = initialExecutor ? sharedTools(initialExecutor) : [];
+  const [tools, setTools] = useState<JobInput["tools"]>(initialTools.includes("bnb-rpc") ? ["bnb-rpc"] : initialTools.slice(0, 1));
+  const [services, setServices] = useState<string[]>([]), [error, setError] = useState("");
+  const target = candidates.find((candidate) => candidate.id === executor);
+  const allowed = target ? sharedTools(target) : [];
+  const callLimit = minimumAmount(budget, agent.max_call, target?.max_call ?? "0", parent?.max_call ?? agent.max_call);
+  const depthLimit = system?.max_depth ?? 8;
+  const depthBlocked = Boolean(parent && parent.depth >= depthLimit);
+  const deadlineLimit = Math.min(Date.now() + 30 * 86400e3, parent ? Date.parse(parent.deadline) : Infinity);
+  // Branch recipients come from the saved root terms, even when the current catalog has changed.
+  const connectedServices = parent ? parent.root_services.filter((merchant) => parent.services?.includes(merchant.id)) : merchants;
+  const availableServices = connectedServices.filter((merchant) => tools.includes(merchant.tool));
+  const recipientBlocked = (merchant: JobMerchant) => [agent.wallet, target?.wallet].some((wallet) => wallet?.toLowerCase() === merchant.recipient.toLowerCase());
   async function submit(event: FormEvent) {
     event.preventDefault(); setError("");
+    if (!target) { setError("Choose a registered, ready agent with shared tools."); return; }
+    if (depthBlocked) { setError(`This job has reached the ${depthLimit}-level branch limit.`); return; }
     const budgetUnits = usdtUnits(budget), callUnits = usdtUnits(maxCall);
-    if (budgetUnits === null || callUnits === null || budgetUnits <= 0n || callUnits <= 0n || budgetUnits > (usdtUnits(budgetLimit) ?? 0n) || callUnits > (usdtUnits(callLimit) ?? 0n)) { setError("Enter USDT amounts within the available budget and per-call limit, with up to 18 decimal places."); return; }
-    if (!tools.length || tools.some((t) => !allowed.includes(t))) { setError("Choose tools enabled for both agents."); return; }
-    try { await onSave({ title, description, executor_id: executor, budget, max_call: maxCall, deadline: new Date(deadline).toISOString(), tools, acceptance, minimum_block: minimumBlock, public_activity: parent?.public_activity ?? agent.public_activity, services }); }
-    catch (e) { setError((e as Error).message); }
+    if (budgetUnits === null || callUnits === null || budgetUnits <= 0n || callUnits <= 0n || budgetUnits > (usdtUnits(budgetLimit) ?? 0n) || callUnits > (usdtUnits(callLimit) ?? 0n)) { setError("Enter USDT amounts within the available budget and both agents' per-call limits, with up to 18 decimal places."); return; }
+    const deadlineMilliseconds = Date.parse(deadline);
+    if (!Number.isFinite(deadlineMilliseconds) || deadlineMilliseconds < Date.now() + 5 * 60e3 || deadlineMilliseconds > deadlineLimit) { setError(parent ? "Choose a deadline at least five minutes away and no later than the parent deadline." : "Choose a deadline between five minutes and thirty days away."); return; }
+    if (!tools.length || tools.some((tool) => !allowed.includes(tool))) { setError("Choose shared tools within the parent permissions."); return; }
+    if (services.some((id) => !availableServices.some((merchant) => merchant.id === id && !recipientBlocked(merchant)))) { setError("Choose service recipients within the inherited permissions."); return; }
+    try { await onSave({ title, description, executor_id: executor, budget, max_call: maxCall, deadline: new Date(deadlineMilliseconds).toISOString(), tools, acceptance, minimum_block: minimumBlock, public_activity: parent?.public_activity ?? agent.public_activity, services }); }
+    catch (reason) { setError((reason as Error).message); }
   }
   return <form className="job-form" onSubmit={submit}>
     <div className="panel-heading"><div><span className="eyebrow">{parent ? "a branch of the job" : "an agreement for the work"}</span><h3>{parent ? "delegate a smaller job" : "give it a job"}</h3></div><button type="button" className="text-link" onClick={onCancel} disabled={busy}>cancel</button></div>
-    {parent && <p className="field-help">From {parent.title}. {jobMoney(parent.available)} USDT available{parent.funding === "unfunded" ? " in the planned budget" : ""}. A branch inherits narrower permissions and an earlier deadline.</p>}
-    <label>job name<input required minLength={3} maxLength={120} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. research changes in pool liquidity" /></label>
-    <label>what counts as done?<textarea required minLength={5} maxLength={1200} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Describe the result you want the agent to deliver." /></label>
-    <label>assigned agent<select value={executor} onChange={(e) => { setExecutor(e.target.value); setTools([]); setServices([]); }}>{choices.filter((a) => a.status === "ready").map((a) => <option key={a.id} value={a.id}>{a.name}{a.id === agent.id ? " · your agent" : ""}</option>)}</select></label>
-    <div className="job-form-grid"><label>total budget · USDT<input required type="text" inputMode="decimal" pattern="[0-9]+(\.[0-9]{1,18})?" max={budgetLimit} value={budget} onChange={(e) => setBudget(e.target.value)} /></label><label>per-call cap · USDT<input required type="text" inputMode="decimal" pattern="[0-9]+(\.[0-9]{1,18})?" max={callLimit} value={maxCall} onChange={(e) => setMaxCall(e.target.value)} /></label></div>
-    <label>deadline<input required type="datetime-local" value={deadline} min={new Date(Date.now() - new Date().getTimezoneOffset() * 60e3 + 5 * 60e3).toISOString().slice(0, 16)} max={parent ? new Date(new Date(parent.deadline).getTime() - new Date().getTimezoneOffset() * 60e3).toISOString().slice(0, 16) : undefined} onChange={(e) => setDeadline(e.target.value)} /></label>
-    <p className="field-help">The buyer reviews the exact submitted evidence, including finalized BNB Smart Chain block observations.</p>
-    <fieldset><legend>tools for this job</legend>{allowed.length ? allowed.map((tool) => <label className="checkbox-row" key={tool}><input type="checkbox" checked={tools.includes(tool as JobInput["tools"][number])} onChange={(e) => { setTools(e.target.checked ? [...tools, tool as JobInput["tools"][number]] : tools.filter((t) => t !== tool)); setServices([]); }} /><span>{tool === "bnb-rpc" ? "chain data" : tool}</span></label>) : <p className="field-help">These agents have no shared tools.</p>}</fieldset>
-    {merchants.filter((m) => tools.includes(m.tool) && (!parent || parent.services?.includes(m.id))).map((m) => <label className="checkbox-row" key={m.id}><input type="checkbox" checked={services.includes(m.id)} onChange={(e) => setServices(e.target.checked ? [...services, m.id] : services.filter((s) => s !== m.id))} />{m.name}<small>escrow service</small></label>)}
+    {parent && <p className="field-help">From {parent.title}. {jobMoney(parent.available)} USDT available{parent.funding === "unfunded" ? " in the planned budget" : ""}. Branch depth {parent.depth + 1} of {depthLimit}. Tools, recipients and per-call limits stay the same or narrower; the deadline cannot be later.</p>}
+    <label>job name<input required minLength={3} maxLength={120} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. research changes in pool liquidity" /></label>
+    <label>what counts as done?<textarea required minLength={5} maxLength={1200} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Describe the result you want the agent to deliver." /></label>
+    <label>assigned agent<select required aria-label="assigned agent" value={executor} onChange={(event) => { setExecutor(event.target.value); setTools([]); setServices([]); }}>{!candidates.length && <option value="">no eligible agents</option>}{candidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.name}{candidate.id === agent.id ? " · your agent" : ""}</option>)}</select></label>
+    <p className="field-help">Only registered, ready agents with shared tools are listed.{target && <> {target.name}'s per-call limit is {jobMoney(target.max_call)} USDT.</>}</p>
+    <div className="job-form-grid"><label>total budget · USDT<input required type="text" inputMode="decimal" pattern="[0-9]+(\.[0-9]{1,18})?" max={budgetLimit} value={budget} onChange={(event) => setBudget(event.target.value)} /></label><label>per-call cap · USDT<input required type="text" inputMode="decimal" pattern="[0-9]+(\.[0-9]{1,18})?" max={callLimit} value={maxCall} onChange={(event) => setMaxCall(event.target.value)} /></label></div>
+    <p className="field-help">Budget limit: {jobMoney(budgetLimit)} USDT. Per-call limit: {jobMoney(callLimit)} USDT, bounded by the budget, both agents{parent && " and the parent job"}.</p>
+    <label>deadline<input required type="datetime-local" step="1" value={deadline} min={localJobTime(Date.now() + 5 * 60e3 + 1000)} max={localJobTime(deadlineLimit)} onChange={(event) => setDeadline(event.target.value)} /></label>
+    {parent && <p className="field-help">Parent deadline: <ExactJobTime seconds={jobWindow(parent).deadline} />. The root buyer reviews every branch's evidence and signs acceptance.</p>}
+    {!parent && <p className="field-help">The buyer reviews the exact submitted evidence, including finalized BNB Smart Chain block observations.</p>}
+    <fieldset><legend>tools for this job</legend>{allowed.length ? allowed.map((tool) => <label className="checkbox-row" key={tool}><input type="checkbox" checked={tools.includes(tool)} onChange={(event) => { setTools(event.target.checked ? [...tools, tool] : tools.filter((value) => value !== tool)); setServices([]); }} /><span>{tool === "bnb-rpc" ? "chain data" : label(tool)}</span></label>) : <p className="field-help">No eligible agent shares these permissions. Enable shared tools and register or resume an agent first.</p>}</fieldset>
+    {availableServices.length > 0 && <fieldset className="job-service-choices"><legend>approved service recipients</legend>{availableServices.map((merchant) => <label className="checkbox-row" key={merchant.id}><input type="checkbox" checked={services.includes(merchant.id)} disabled={recipientBlocked(merchant)} onChange={(event) => setServices(event.target.checked ? [...services, merchant.id] : services.filter((value) => value !== merchant.id))} /><span>{merchant.name}<code>{merchant.recipient}</code>{recipientBlocked(merchant) && <small>A service recipient cannot be either assigned wallet.</small>}</span></label>)}</fieldset>}
+    {parent?.funding === "unfunded" && <p className="field-help">Fund the parent before allocating this branch onchain.</p>}
+    {parent && !connectedServices.length && <p className="field-help">This parent allows no escrow service recipients. A branch cannot add one.</p>}
+    {system?.service_payments_enabled !== true && <p className="field-help">Direct payments from job escrow to services are disabled. Connected model and research tools use operator credits separately.</p>}
     {error && <p className="form-error" role="alert">{error}</p>}
-    <button type="submit" className="primary" disabled={busy || !allowed.length}>{busy ? "saving…" : parent ? "reserve draft branch" : "save job terms"}<Plus size={14} /></button>
-    <p className="field-help">Saving terms reserves a planned budget. Funding and onchain allocations need a separate wallet approval.</p>
+    <button type="submit" className="primary" disabled={busy || !target || !allowed.length || depthBlocked || (usdtUnits(budgetLimit) ?? 0n) <= 0n}>{busy ? "saving…" : parent ? "reserve draft branch" : "save job terms"}<Plus size={14} /></button>
+    <p className="field-help">{parent ? "Saving reserves a draft allocation within the parent budget. The parent executor's wallet signs the onchain allocation; it uses the funded parent escrow and needs BNB for gas. No new USDT deposit is required." : "Saving records the terms without transferring funds. The buyer separately approves and funds the USDT escrow with their wallet."}</p>
   </form>;
 }
 
@@ -157,6 +181,19 @@ export function AgentJobs({ agent, owned, api, sendTransaction }: { agent: Runti
   const ownsParentExecutor = Boolean(job?.parent_id && own(jobs.find(item => item.id === job.parent_id)?.executor_id ?? job.requester_id));
   const cancellationActor = Boolean(job && (own(job.executor_id) || own(job.requester_id) || (job.parent_id && ownsRootBuyer)));
   const cancellationAllowed = Boolean(job && windowState && childCount === 0 && (own(job.executor_id) || (windowState.refundOpen && (own(job.requester_id) || (job.parent_id && ownsRootBuyer)))));
+  function delegationIssue(item: Job, current = Date.now()): string | null {
+    const parentJob = jobs.find((value) => value.id === item.parent_id);
+    const root = jobs.find((value) => value.id === (item.root_id || item.id));
+    if (item.paused || parentJob?.paused || root?.paused) return "Resume the job tree before allocating this branch.";
+    if (!jobWindow(item, current).submissionOpen) return "The branch deadline has passed. Save new terms before allocating work.";
+    // A missing ancestor is validated by the API, which refreshes its chain state.
+    if (!parentJob) return null;
+    if (parentJob.funding !== "funded") return "Fund the parent before allocating this branch onchain.";
+    if (parentJob.state !== "open") return "Allocate branches only while the funded parent job is open.";
+    if (!jobWindow(parentJob, current).submissionOpen) return "The parent deadline has passed. Save new terms before allocating work.";
+    return null;
+  }
+  const branchAllocationIssue = job?.parent_id && job.state === "draft" ? delegationIssue(job, currentTime) : null;
   function actionIssue(item: Job, action: string): string | null {
     const timing = jobWindow(item);
     const root = jobs.find(value => value.id === (item.root_id || item.id));
@@ -172,7 +209,7 @@ export function AgentJobs({ agent, owned, api, sendTransaction }: { agent: Runti
     if (action === "cancel" && !own(item.executor_id) && !timing.refundOpen) return "Buyer refunds become available after the deadline plus 24 hours.";
     if (action === "close_branch" && (!item.parent_id || item.state !== "accepted")) return "Only an accepted branch that has not already closed can be closed.";
     if (["fund", "delegate"].includes(action) && !timing.submissionOpen) return "The job deadline has passed. Save new terms before funding work.";
-    if (action === "delegate" && paused) return "Resume the job tree before allocating a branch.";
+    if (action === "delegate") return delegationIssue(item);
     return null;
   }
   async function work(action: () => Promise<void>) { setBusy(true); setError(""); try { await action(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } }
@@ -208,7 +245,7 @@ export function AgentJobs({ agent, owned, api, sendTransaction }: { agent: Runti
     {error && <p className="form-error" role="alert">{error}</p>}
     {!live && <p className="job-availability">Prepare job terms and branches now. Funded jobs are not open yet.</p>}
     {intent && <div className="job-wallet-review"><h4>review wallet action · {label(intent.action)}</h4><p>{jobs.find((j) => j.id === intent.job_id)?.title}</p><p className="field-help">Your BNB Smart Chain wallet signs this action and pays its BNB fees. USDT is held by the job vault.</p><details><summary>transaction details</summary><p>fee payer <code>{intent.sender}</code></p><p>contract <code>{intent.to}</code></p><p>network {intent.chain_id}</p><p>expires {shortDate(intent.expires_at)}</p></details>{txHash || uncertain ? <>{!txHash&&<p className="field-help">The wallet may have submitted this action. Check wallet activity and enter the final transaction hash before signing again.</p>}<label>submitted job transaction hash<input value={txHash||""} onChange={event=>setTxHash(event.target.value)} placeholder="0x…" spellCheck={false}/></label><a className="text-link" target="_blank" rel="noreferrer" href={explorer(txHash||"", "tx", chainId)}>view submitted transaction <ArrowUpRight size={13} /></a><button className="outline" disabled={busy||!/^0x[0-9a-fA-F]{64}$/.test(txHash||"")} onClick={() => void confirmAction()}><RefreshCw size={13} />check confirmation</button><button className="outline" disabled={busy||!/^0x[0-9a-fA-F]{64}$/.test(txHash||"")} onClick={()=>void work(async()=>{await recordSubmitted(api,`/account/job-actions/${intent.id}/submitted`,txHash!);await api(`/account/job-actions/${intent.id}/release-failed`,{method:"POST"});localStorage.removeItem(`tab-job-action:${intent.id}`);setIntent(null);setTxHash(null);setUncertain(false);await reload();})}>check failed transaction</button></> : <><button className="primary" disabled={busy || !access.allows(`job_${intent.action}`)} onClick={() => void send()}>sign {label(intent.action)}</button>{Date.parse(intent.expires_at) <= Date.now() && <button className="outline" disabled={busy} onClick={() => void work(async () => { await access.require(`job_${intent.action}`, undefined, intent.sender); const value = await jobAPI.prepare(api, intent.job_id, intent.action); if (value.chain_id !== chainId) throw Error("The transaction network differs from the app configuration."); setIntent(value); })}>prepare a fresh transaction</button>}</>}</div>}
-    {creating && <JobForm agent={parent ? owned.find((a) => a.id === parent.executor_id) ?? agent : agent} choices={choices} parent={parent} merchants={merchants} busy={busy} onCancel={() => setCreating(false)} onSave={async (input) => { setBusy(true); try { await access.require("create_job"); const created = parent ? await jobAPI.branch(api, parent.id, input) : await jobAPI.create(api, agent.id, input); setCreating(false); setParent(null); setSelected(created.id); await reload(); window.dispatchEvent(new Event("tab:jobs-changed")); } finally { setBusy(false); } }} />}
+    {creating && <JobForm agent={parent ? owned.find((a) => a.id === parent.executor_id) ?? agent : agent} choices={choices} parent={parent} merchants={merchants} system={system} busy={busy} onCancel={() => setCreating(false)} onSave={async (input) => { setBusy(true); try { await access.require("create_job"); const created = parent ? await jobAPI.branch(api, parent.id, input) : await jobAPI.create(api, agent.id, input); setCreating(false); setParent(null); setSelected(created.id); await reload(); window.dispatchEvent(new Event("tab:jobs-changed")); } finally { setBusy(false); } }} />}
     {!jobs.length && !creating && <p className="field-help">No agreements yet. Start with a small deliverable and a budget you can review.</p>}
     <div className="owned-job-list">{jobs.map((item) => <button type="button" key={item.id} disabled={busy} className={`owned-job${selected === item.id ? " selected" : ""}`} onClick={() => setSelected(item.id)}><JobBud accepted={paidWork(item.state)} /><span><strong>{item.title}</strong><small>{item.parent_id ? "branch" : "job"} · {item.executor_name}</small></span><span className="job-status" data-funding={item.funding}>{item.funding === "unfunded" ? "unfunded" : label(item.state)}</span></button>)}</div>
     {job && <div className="owned-job-detail" id={`job-${job.id}`}>
@@ -225,13 +262,14 @@ export function AgentJobs({ agent, owned, api, sendTransaction }: { agent: Runti
       {job.evidence != null && <div className="job-evidence"><h4>evidence to review</h4>{isRecord(job.evidence) && "block_number" in job.evidence ? <p>BNB Smart Chain · block {String(job.evidence.block_number)}<br /><code>{String(job.evidence.block_hash)}</code></p> : <pre>{JSON.stringify(job.evidence, null, 2)}</pre>}<p className="field-help">{job.funding === "unfunded" ? "Collected for this draft. No reward has been paid." : paidWork(job.state) ? "Accepted onchain." : "Review before submission or acceptance."}</p></div>}
       <section className="job-runs" aria-label="Private job runs"><h4>work delivered by the agent</h4>{runsLoading?<p className="field-help" role="status">reading job runs…</p>:runsError?<p className="form-error" role="alert">Job runs unavailable: {runsError}</p>:runs.length?runs.slice(0,5).map(run=><div key={run.id} className="job-run" data-job-run-status={run.status}><RunReceipt run={{id:run.id,agent_id:run.agent_id,status:run.status,started_at:run.started_at,finished_at:run.finished_at,output:{...run.output.tools,...(run.output.error?{error:run.output.error}:{})}}} task={run.output.task} /><p className="field-help">{run.status==="completed"&&run.output.evidence_status==="attached"?"Result saved as job evidence. Submit it onchain for the buyer to review; payment follows acceptance.":"This run did not attach completed evidence. Resolve the unavailable tool or required authorization before running again."}</p></div>):<p className="field-help">No agent execution recorded for this job yet.</p>}</section>
       {own(job.executor_id) && job.acceptance === "buyer_review" && ["draft", "open"].includes(job.state) && windowState!.submissionOpen && <form className="job-evidence-input" onSubmit={(event) => { event.preventDefault(); void work(async () => { await jobAPI.attach(api, job.id, { result: evidenceText }); setEvidenceText(""); await reload(); }); }}><label>deliverable or result<textarea required minLength={5} maxLength={12000} value={evidenceText} onChange={(event) => setEvidenceText(event.target.value)} placeholder="Add the result for the buyer to review." /></label><button className="outline" disabled={busy}>save evidence</button><p className="field-help">Saving evidence records its hash. Submit it separately for onchain acceptance.</p></form>}
+      {branchAllocationIssue && own(job.requester_id) && <p className="field-help">{branchAllocationIssue}</p>}
       <div className="job-actions">
         {job.state === "draft" && (own(job.requester_id) || own(job.executor_id)) && <button className="outline" disabled={busy} onClick={() => void work(async () => { await jobAPI.cancelDraft(api, job.id); await reload(); window.dispatchEvent(new Event("tab:jobs-changed")); })}>cancel draft</button>}
-        {own(job.executor_id) && ["draft", "open"].includes(job.state) && !treePaused && <button className="outline" disabled={busy || (usdtUnits(job.available) ?? 0n) <= 0n || job.depth >= 8 || !windowState!.submissionOpen || !access.allows("job_delegate")} onClick={() => { setParent(job); setCreating(true); }}><GitBranch size={13} />delegate a branch</button>}
+        {own(job.executor_id) && ["draft", "open"].includes(job.state) && !treePaused && <button className="outline" disabled={busy || (usdtUnits(job.available) ?? 0n) <= 0n || job.depth >= (system?.max_depth ?? 8) || owned.find((value) => value.id === job.executor_id)?.status !== "ready" || !windowState!.submissionOpen || !access.allows("job_delegate")} onClick={() => { setParent(job); setCreating(true); }}><GitBranch size={13} />delegate a branch</button>}
         {own(job.executor_id)&&job.state==="open"&&job.funding==="funded"&&<button className="primary" disabled={busy||!access.allows("run")||!live||!!intent||treePaused||Date.parse(job.deadline)<=currentTime||owned.find(value=>value.id===job.executor_id)?.status!=="ready"} onClick={()=>void work(async()=>{await access.require("run", undefined, owned.find(value=>value.id===job.executor_id)?.wallet || undefined);await jobAPI.run(api,job.id);const records=await jobAPI.runs(api,job.id);setRuns(records);setRunsError("");await reload();window.dispatchEvent(new Event("tab:jobs-changed"));})}>run job</button>}
         {live && !intent && <>
           {job.state === "draft" && !job.parent_id && own(job.requester_id) && <button className="primary" disabled={busy || !access.allows("job_fund")} onClick={() => void prepare(job, "fund")}>review funding</button>}
-          {job.state === "draft" && job.parent_id && own(job.requester_id) && <button className="primary" disabled={busy || !access.allows("job_delegate")} onClick={() => void prepare(job, "delegate")}>allocate branch onchain</button>}
+          {job.state === "draft" && job.parent_id && own(job.requester_id) && <button className="primary" disabled={busy || Boolean(branchAllocationIssue) || !access.allows("job_delegate")} onClick={() => void prepare(job, "delegate")}>allocate branch onchain</button>}
           {job.funding === "funded" && <>
             {job.state === "open" && own(job.executor_id) && job.evidence_hash && <button className="primary" disabled={busy || !windowState!.submissionOpen} onClick={() => void prepare(job, "submit")}>submit evidence</button>}
             {job.state === "submitted" && ownsRootBuyer && <><button className="primary" disabled={busy || treePaused || !windowState!.reviewOpen || childCount > 0} onClick={() => void prepare(job, "accept")}><Check size={13} />accept evidence and pay</button><button className="outline" disabled={busy || treePaused || !windowState!.reviewOpen} onClick={() => void prepare(job, "reject")}>{windowState!.submissionOpen ? "request revision" : "reject evidence"}</button></>}

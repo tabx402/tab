@@ -67,3 +67,8 @@
 .job-run { min-width: 0; border-top: 1px solid var(--line); padding-top: 14px; }
 .job-run + .job-run { margin-top: 16px; }
 .job-run .run-receipt { border: 0; padding: 0; }
+
+.job-service-choices .checkbox-row { align-items: flex-start; }
+.job-service-choices .checkbox-row > span { min-width: 0; }
+.job-service-choices code { display: block; color: var(--blue); font-size: 10px; overflow-wrap: anywhere; margin-top: 5px; }
+.job-service-choices small { display: block; color: var(--muted); margin-top: 5px; }

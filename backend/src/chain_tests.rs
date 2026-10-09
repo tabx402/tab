@@ -112,6 +112,60 @@ fn encoded(tokens: &[Token]) -> Value {
 fn uint(n: u128) -> Token {
     bnb::uint(n)
 }
+fn job_reply(job: &Job, state: u128, available: u128, paused: bool) -> Value {
+    encoded(&[Token::Tuple(vec![
+        bnb::bytes32(&bnb::id(&job.root_id).unwrap()).unwrap(),
+        bnb::bytes32(
+            &job.parent_id
+                .as_deref()
+                .map(bnb::id)
+                .transpose()
+                .unwrap()
+                .unwrap_or_else(|| bnb::ZERO_HASH.into()),
+        )
+        .unwrap(),
+        bnb::addr(&job.buyer_wallet).unwrap(),
+        bnb::addr(&job.executor_wallet).unwrap(),
+        bnb::bytes32(bnb::ZERO_HASH).unwrap(),
+        uint(units(job.plan.budget).unwrap()),
+        uint(available),
+        uint(units(job.plan.max_call).unwrap()),
+        uint(job.plan.deadline.timestamp() as u128),
+        bnb::bytes32(&job.terms_hash).unwrap(),
+        bnb::bytes32(bnb::ZERO_HASH).unwrap(),
+        uint(u128::from(tool_bitmap(&job.plan.tools))),
+        uint(0),
+        uint(0),
+        uint(0),
+        uint(u128::from(job.depth)),
+        uint(state),
+        Token::Bool(paused),
+        Token::Bool(false),
+        uint(200),
+        uint(0),
+        uint(0),
+        uint(0),
+        uint(0),
+        Token::Array(
+            job.root_services
+                .iter()
+                .filter(|merchant| job.plan.services.contains(&merchant.id))
+                .map(|merchant| bnb::addr(&merchant.recipient).unwrap())
+                .collect(),
+        ),
+    ])])
+}
+fn set_job_reply(f: &Fixture, job: &Job, state: u128, available: u128, paused: bool) {
+    let data = abi()
+        .function("getJob")
+        .unwrap()
+        .encode_input(&[bnb::bytes32(&job.id).unwrap()])
+        .unwrap();
+    f.replies.lock().unwrap().insert(
+        format!("call:0x{}", hex::encode(data)),
+        job_reply(job, state, available, paused),
+    );
+}
 fn protocol() -> Value {
     encoded(&[Token::Tuple(vec![
         bnb::addr(WALLET).unwrap(),
@@ -1185,5 +1239,312 @@ async fn closed_branch_refresh_preserves_paid_work_and_executor_cancellation_aut
         "before review expiry choose the executor even if this account also owns the buyer"
     );
     assert_eq!(intent.data[..10], selector("cancelJob(bytes32)"));
+    assert!(!f.replies.lock().unwrap().contains_key("sent"));
+}
+
+#[tokio::test]
+async fn delegation_refresh_counts_allocated_and_draft_budgets_once() {
+    use crate::db::Store;
+    let f = fixture().await;
+    let make_agent = |owner: &str, name: &str, wallet: &str| {
+        let mut agent = f.state.create_agent(owner, serde_json::from_value(json!({
+            "name":name,"purpose":"deliver a scoped observation","tools":["bnb-rpc","openrouter"],
+            "daily_cap":"10","max_call":"0.1","public_activity":true
+        })).unwrap()).unwrap();
+        agent.wallet = Some(wallet.into());
+        agent.registry_address = PROTOCOL.into();
+        agent.registry_id = Some(f.state.bnb.agent_address(wallet, &agent.id).unwrap());
+        agent.status = "ready".into();
+        f.state.store.save_agent(&agent).unwrap();
+        agent
+    };
+    let buyer = make_agent("buyer", "buyer", WALLET);
+    let executor = make_agent(
+        "operator",
+        "executor",
+        "0x7777777777777777777777777777777777777777",
+    );
+    let child_executor = make_agent(
+        "downstream",
+        "child",
+        "0x8888888888888888888888888888888888888888",
+    );
+    let plan = |agent: &RuntimeAgent, budget: &str, deadline: chrono::DateTime<chrono::Utc>| {
+        serde_json::from_value(json!({"title":"check a public balance","description":"deliver a block and balance reference",
+            "executor_id":agent.id,"budget":budget,"max_call":"0.1","tools":["bnb-rpc"],
+            "deadline":deadline,"minimum_block":100,"public_activity":true})).unwrap()
+    };
+    let deadline = chrono::Utc::now() + chrono::Duration::hours(4);
+    let mut root = f
+        .state
+        .create_job("buyer", &buyer.id, plan(&executor, "5", deadline), None)
+        .await
+        .unwrap();
+    let allocated = f
+        .state
+        .create_job(
+            "operator",
+            &executor.id,
+            plan(&child_executor, "1", deadline),
+            Some(&root.id),
+        )
+        .await
+        .unwrap();
+    let draft = f
+        .state
+        .create_job(
+            "operator",
+            &executor.id,
+            plan(&child_executor, "2", deadline),
+            Some(&root.id),
+        )
+        .await
+        .unwrap();
+    root.state = "open".into();
+    root.funding = "funded".into();
+    Store::save_job(&f.state.store.connect().unwrap(), &root).unwrap();
+    set_job_reply(&f, &root, 1, units("4".parse().unwrap()).unwrap(), false);
+    set_job_reply(
+        &f,
+        &allocated,
+        1,
+        units(allocated.plan.budget).unwrap(),
+        false,
+    );
+    let mut absent = draft.clone();
+    absent.buyer_wallet = bnb::ZERO.into();
+    set_job_reply(&f, &absent, 0, 0, false);
+
+    for _ in 0..2 {
+        let refreshed = f
+            .state
+            .refresh_job("operator", &root.id, None)
+            .await
+            .unwrap();
+        assert_eq!(
+            refreshed.available.to_string(),
+            "2",
+            "chain allocation is already deducted; only the remaining draft reserves planning capacity"
+        );
+        assert_eq!(
+            f.state.get_job("operator", &allocated.id).unwrap().funding,
+            "funded"
+        );
+        assert_eq!(
+            f.state.get_job("operator", &draft.id).unwrap().funding,
+            "unfunded"
+        );
+    }
+    f.state.cancel_draft("operator", &draft.id).unwrap();
+    assert_eq!(
+        f.state
+            .get_job("operator", &root.id)
+            .unwrap()
+            .available
+            .to_string(),
+        "4"
+    );
+
+    set_job_reply(&f, &root, 1, units("4".parse().unwrap()).unwrap(), true);
+    assert!(
+        f.state
+            .create_job(
+                "operator",
+                &executor.id,
+                plan(&child_executor, "1", deadline),
+                Some(&root.id)
+            )
+            .await
+            .is_err(),
+        "a stale local unpaused parent must not admit another branch"
+    );
+    assert!(f.state.get_job("operator", &root.id).unwrap().paused);
+    set_job_reply(&f, &root, 2, units("4".parse().unwrap()).unwrap(), false);
+    assert!(
+        f.state
+            .create_job(
+                "operator",
+                &executor.id,
+                plan(&child_executor, "1", deadline),
+                Some(&root.id)
+            )
+            .await
+            .is_err(),
+        "submission outside the app closes the parent's delegation window"
+    );
+    let mut missing = root.clone();
+    missing.buyer_wallet = bnb::ZERO.into();
+    set_job_reply(&f, &missing, 0, 0, false);
+    assert!(
+        f.state
+            .refresh_job("operator", &root.id, None)
+            .await
+            .is_err(),
+        "funded jobs cannot silently retain cached state when escrow reports them absent"
+    );
+    assert!(!f.replies.lock().unwrap().contains_key("sent"));
+}
+
+#[tokio::test]
+async fn delegation_preparation_rechecks_live_parent_and_saved_child_envelope() {
+    use crate::db::Store;
+    let f = fixture().await;
+    let merchant = JobMerchant {
+        id: "source".into(),
+        name: "source".into(),
+        tool: "bnb-rpc".into(),
+        service_key: ECONOMICS.into(),
+        recipient: BACKING.into(),
+    };
+    std::fs::write(
+        &f.state.config.merchants,
+        serde_json::to_vec(&vec![merchant.clone()]).unwrap(),
+    )
+    .unwrap();
+    let make_agent = |name: &str, wallet: &str| {
+        let mut agent = f.state.create_agent("owner", serde_json::from_value(json!({
+            "name":name,"purpose":"deliver a scoped observation","tools":["bnb-rpc","openrouter"],
+            "daily_cap":"10","max_call":"0.1","public_activity":true
+        })).unwrap()).unwrap();
+        agent.wallet = Some(wallet.into());
+        agent.registry_address = PROTOCOL.into();
+        agent.registry_id = Some(f.state.bnb.agent_address(wallet, &agent.id).unwrap());
+        agent.status = "ready".into();
+        f.state.store.save_agent(&agent).unwrap();
+        agent
+    };
+    let buyer = make_agent("buyer", WALLET);
+    let executor_wallet = "0x7777777777777777777777777777777777777777";
+    let executor = make_agent("executor", executor_wallet);
+    let child_executor = make_agent("child", "0x8888888888888888888888888888888888888888");
+    let deadline = chrono::Utc::now() + chrono::Duration::hours(4);
+    let plan = |agent: &RuntimeAgent, budget: &str| {
+        serde_json::from_value(json!({"title":"check a public balance","description":"deliver a block and balance reference",
+            "executor_id":agent.id,"budget":budget,"max_call":"0.1","tools":["bnb-rpc"],
+            "deadline":deadline,"minimum_block":100,"services":["source"],"public_activity":true})).unwrap()
+    };
+    let mut root = f
+        .state
+        .create_job("owner", &buyer.id, plan(&executor, "5"), None)
+        .await
+        .unwrap();
+    let child = f
+        .state
+        .create_job(
+            "owner",
+            &executor.id,
+            plan(&child_executor, "2"),
+            Some(&root.id),
+        )
+        .await
+        .unwrap();
+    let mut changed_merchant = merchant;
+    changed_merchant.recipient = "0x9999999999999999999999999999999999999999".into();
+    std::fs::write(
+        &f.state.config.merchants,
+        serde_json::to_vec(&vec![changed_merchant]).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        child.root_services[0].recipient, BACKING,
+        "directory changes cannot replace buyer-approved recipients"
+    );
+    let mut aliased = child.clone();
+    aliased.root_services[0].recipient = child.executor_wallet.clone();
+    assert!(
+        f.state
+            .job_instruction(&aliased, "delegate", executor_wallet)
+            .is_err(),
+        "a provider must not be the delegated executor"
+    );
+    root.state = "open".into();
+    root.funding = "funded".into();
+    Store::save_job(&f.state.store.connect().unwrap(), &root).unwrap();
+    let mut absent = child.clone();
+    absent.buyer_wallet = bnb::ZERO.into();
+    set_job_reply(&f, &absent, 0, 0, false);
+    set_job_reply(&f, &root, 2, units(root.plan.budget).unwrap(), false);
+    assert!(f
+        .state
+        .prepare_job("owner", &child.id, "delegate")
+        .await
+        .is_err());
+    set_job_reply(&f, &root, 1, units(root.plan.budget).unwrap(), true);
+    assert!(f
+        .state
+        .prepare_job("owner", &child.id, "delegate")
+        .await
+        .is_err());
+    set_job_reply(&f, &root, 1, units(root.plan.budget).unwrap(), false);
+
+    let mut changed_snapshot = child.clone();
+    changed_snapshot.root_services[0].recipient =
+        "0x9999999999999999999999999999999999999999".into();
+    Store::save_job(&f.state.store.connect().unwrap(), &changed_snapshot).unwrap();
+    assert!(
+        f.state
+            .prepare_job("owner", &child.id, "delegate")
+            .await
+            .is_err(),
+        "a child must retain the exact root provider snapshot"
+    );
+    Store::save_job(&f.state.store.connect().unwrap(), &child).unwrap();
+    let mut widened = child.clone();
+    widened.plan.tools.push("openrouter".into());
+    Store::save_job(&f.state.store.connect().unwrap(), &widened).unwrap();
+    assert!(
+        f.state
+            .prepare_job("owner", &child.id, "delegate")
+            .await
+            .is_err(),
+        "a draft must still fit its parent's current tool envelope"
+    );
+    Store::save_job(&f.state.store.connect().unwrap(), &child).unwrap();
+    f.replies.lock().unwrap().insert(
+        format!("call:{}", selector("getAgent(bytes32)")),
+        encoded(&[Token::Tuple(vec![
+            bnb::addr(executor_wallet).unwrap(),
+            Token::String(executor.plan.name.clone()),
+            uint(units(executor.plan.daily_cap).unwrap()),
+            bnb::bytes32(&f.state.policy(&executor)).unwrap(),
+            Token::Bool(false),
+            uint(1),
+            uint(0),
+            uint(0),
+        ])]),
+    );
+    let intent = f
+        .state
+        .prepare_job("owner", &child.id, "delegate")
+        .await
+        .unwrap();
+    assert_eq!(intent.sender, executor_wallet);
+    assert_eq!(intent.data[..10], selector("delegateJob(bytes32,(bytes32,address,uint256,uint256,uint64,bytes32,uint64,address[]))"));
+    assert_eq!(
+        f.state
+            .get_job("owner", &root.id)
+            .unwrap()
+            .available
+            .to_string(),
+        "3"
+    );
+    assert_eq!(
+        f.state
+            .prepare_job("owner", &child.id, "delegate")
+            .await
+            .unwrap()
+            .id,
+        intent.id,
+        "retry reuses the prepared action"
+    );
+    set_job_reply(&f, &child, 1, units(child.plan.budget).unwrap(), false);
+    set_job_reply(&f, &root, 1, units("3".parse().unwrap()).unwrap(), false);
+    assert!(
+        f.state
+            .prepare_job("owner", &child.id, "delegate")
+            .await
+            .is_err(),
+        "an already allocated branch cannot be delegated twice"
+    );
     assert!(!f.replies.lock().unwrap().contains_key("sent"));
 }

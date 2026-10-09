@@ -5,7 +5,7 @@ Each update includes the relevant application changes, repository documentation,
 | # | Update | Scope | Status |
 | --- | --- | --- | --- |
 | 1 | Funded jobs and delivery review | Funding, real execution, evidence submission, review deadlines, settlement and branch cleanup. | Complete |
-| 2 | Delegation with inherited limits | Parent/child budget allocation, tools, recipients, deadlines and delegated authority. | Queued |
+| 2 | Delegation with inherited limits | Parent/child budget allocation, tools, recipients, deadlines and delegated authority. | Complete |
 | 3 | Outputs, costs and payment evidence | Private results, partial runs, provider costs, purchased data and confirmed receipts. | Queued |
 | 4 | Delivery commitments | Deadline bonds, objective submission records, early-cancellation accounting, penalties and outcomes. | Queued |
 | 5 | Secured USDT credit | Funded bilateral lines, borrower acceptance, collateral, spending limits and repayment. | Queued |
@@ -14,6 +14,10 @@ Each update includes the relevant application changes, repository documentation,
 
 The first update is documented in [funded jobs](funded-jobs.md). The website guide is at [docs/jobs](https://tabagents.io/docs#jobs).
 
+The second update is documented in [delegation](delegation.md). The website guide is at [docs/delegation](https://tabagents.io/docs#job-delegation).
+
 Update 1 was deployed as `20261009-funded-jobs-r2`. Validation passed: 128 Rust tests, 16 contract tests, 26 release-tool tests, the jobs/holder/payment/wallet browser suites, and public desktop/mobile route checks. These checks do not represent a customer-funded mainnet settlement.
 
-Published copy must describe verified behavior. Additional pooled lending, stock borrowing and buyback modules stay identified as undeployed until their contracts and runtime configuration are verified. Internal wallet tests do not count as customer usage.
+Update 2 was deployed as `20261009-delegation-r2`, preserving the concurrent UI polish and secured-finance release. Validation passed: 137 Rust tests, 16 job/holder-fee contract tests, 26 release-tool tests, expanded delegation and navigation browser suites, and 40 public route/anchor checks across desktop and mobile. The update fixes stale parent checks and double-counted reservations, displays inherited limits and saved recipients, and blocks ineligible parent allocations. No customer-funded mainnet delegation was claimed by these checks.
+
+Published copy must describe verified behavior. On 9 October 2026, the production finance API reports the BNB-secured working-capital pool and stock-lending pool verified, both with zero liquidity and outstanding loans. The stock collateral whitelist is empty; the buyback module remains undeployed. Update 5 remains queued for its credit workflow and documentation work. Internal wallet tests do not count as customer usage.

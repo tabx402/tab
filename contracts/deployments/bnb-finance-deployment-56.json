@@ -1,0 +1,35 @@
+{
+  "chain_id": 56,
+  "modules": {
+    "lending": {
+      "enabled": true,
+      "collateral_feed": "0x0567f2323251f0aab15c8dfb1967e4e8a7d42aee",
+      "collateral_feed_code_hash": "0xbd6f524cdc4268b6bd1bb6f77a8821faeea9c52ee9e0afa0b6d948ce82c966c2",
+      "collateral_feed_aggregator": "0xa6e8fee84f9bd528ad71917c9ddbb1fd3214f280",
+      "collateral_feed_aggregator_code_hash": "0x16f41184f797cb8f8918680df0ebf2a97cc3192aa6b104615f61096fc674f2aa",
+      "collateral_feed_decimals": 8,
+      "collateral_max_age": 300,
+      "usdt_feed": "0xb97ad0e74fa7d920791e90258a6e2085088b4320",
+      "usdt_feed_code_hash": "0xbd6f524cdc4268b6bd1bb6f77a8821faeea9c52ee9e0afa0b6d948ce82c966c2",
+      "usdt_feed_aggregator": "0x63f4ff1c8c16c312f4b9792bdfde149622293934",
+      "usdt_feed_aggregator_code_hash": "0xec635dff6a4204a0de141a9a6728b9c84995894680d703e44ac0057ffb38c412",
+      "usdt_feed_decimals": 8,
+      "usdt_max_age": 1800,
+      "wbnb_code_hash": "0xb7d84205eaaf83ce7b3940c6beaad6d22790255e34a9a2b486aa8cdfff118fe6",
+      "configure_direct_backing": true
+    },
+    "stock_loans": {
+      "enabled": true,
+      "usdt_feed": "0xb97ad0e74fa7d920791e90258a6e2085088b4320",
+      "usdt_feed_code_hash": "0xbd6f524cdc4268b6bd1bb6f77a8821faeea9c52ee9e0afa0b6d948ce82c966c2",
+      "usdt_feed_aggregator": "0x63f4ff1c8c16c312f4b9792bdfde149622293934",
+      "usdt_feed_aggregator_code_hash": "0xec635dff6a4204a0de141a9a6728b9c84995894680d703e44ac0057ffb38c412",
+      "usdt_feed_decimals": 8,
+      "usdt_max_age": 1800,
+      "assets": []
+    },
+    "buyback": {
+      "enabled": false
+    }
+  }
+}

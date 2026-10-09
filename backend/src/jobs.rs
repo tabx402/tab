@@ -77,6 +77,27 @@ fn draft_agent(db: &Connection, id: &str, owner: Option<&str>) -> Result<Runtime
 fn pending(db: &Connection, id: &str) -> Result<bool> {
     Ok(db.query_row("SELECT 1 FROM job_intents WHERE job_id=? AND confirmed=0 AND (tx_hash IS NOT NULL OR julianday(json_extract(payload,'$.expires_at'))>julianday(?))",params![id,now()],|r|r.get::<_,u8>(0)).optional()?.is_some())
 }
+fn inherited_limits(plan: &JobInput, parent: &Job) -> Result<()> {
+    if parent.paused
+        || parent.depth >= 8
+        || plan.deadline > parent.plan.deadline
+        || plan.minimum_block < parent.plan.minimum_block
+        || plan.max_call > parent.plan.max_call
+        || plan
+            .tools
+            .iter()
+            .any(|tool| !parent.plan.tools.contains(tool))
+        || plan
+            .services
+            .iter()
+            .any(|service| !parent.plan.services.contains(service))
+    {
+        return Err(ApiError::validation(
+            "A branch must inherit narrower tools, limits and deadline.",
+        ));
+    }
+    Ok(())
+}
 impl AppState {
     pub fn merchants(&self) -> Result<Vec<JobMerchant>> {
         if !self.config.merchants.exists() {
@@ -191,6 +212,14 @@ impl AppState {
         parent_id: Option<&str>,
     ) -> Result<Job> {
         let plan = plan.validate()?;
+        // Delegation must use the current escrow state, including returns and
+        // pauses performed outside this app. Local drafts stay usable offline.
+        if let Some(parent_id) = parent_id {
+            let parent = self.get_job(owner, parent_id)?;
+            if parent.funding == "funded" {
+                self.refresh_job(owner, parent_id, None).await?;
+            }
+        }
         // A proposer cannot allocate another agent's volatile tokens without its owner consent.
         let bond_balance = if plan.bond_tokens > Decimal::ZERO {
             let executor = self.store.agent(owner, &plan.executor_id)?;
@@ -271,20 +300,9 @@ impl AppState {
                 ));
             }
             let root = Store::job(&tx, &parent.root_id)?;
-            if root.paused
-                || parent.depth >= 8
-                || plan.deadline > parent.plan.deadline
-                || plan.minimum_block < parent.plan.minimum_block
-                || plan.max_call > parent.plan.max_call
-                || plan.tools.iter().any(|t| !parent.plan.tools.contains(t))
-                || plan
-                    .services
-                    .iter()
-                    .any(|s| !parent.plan.services.contains(s))
-            {
-                return Err(ApiError::validation(
-                    "A branch must inherit narrower tools, limits and deadline.",
-                ));
+            inherited_limits(&plan, parent)?;
+            if root.paused {
+                return Err(ApiError::conflict("Resume the root job before delegating."));
             }
             if plan.budget > parent.available {
                 return Err(ApiError::conflict(
@@ -588,7 +606,29 @@ impl AppState {
             error: None,
         }
     }
-    pub fn job_instruction(&self, job: &Job, action: &str, _actor: &str) -> Result<Instruction> {
+    pub fn job_instruction(&self, job: &Job, action: &str, actor: &str) -> Result<Instruction> {
+        let recipients = job
+            .root_services
+            .iter()
+            .filter(|merchant| job.plan.services.contains(&merchant.id))
+            .map(|merchant| bnb::address(&merchant.recipient))
+            .collect::<Result<Vec<_>>>()?;
+        if ["fund", "delegate"].contains(&action) {
+            let executor = bnb::address(&job.executor_wallet)?;
+            let actor = bnb::address(actor)?;
+            let mut distinct = HashSet::new();
+            if recipients.len() > 16
+                || recipients.iter().any(|recipient| {
+                    recipient == bnb::ZERO
+                        || recipient == &self.config.program
+                        || recipient == &executor
+                        || recipient == &actor
+                        || !distinct.insert(recipient)
+                })
+            {
+                return Err(ApiError::validation("Choose up to sixteen distinct provider recipients, separate from the buyer, executor and escrow."));
+            }
+        }
         let terms = Token::Tuple(vec![
             bnb::bytes32(&job.id)?,
             bnb::addr(&job.executor_wallet)?,
@@ -598,10 +638,9 @@ impl AppState {
             bnb::bytes32(&job.terms_hash)?,
             bnb::uint(tool_bitmap(&job.plan.tools).into()),
             Token::Array(
-                job.root_services
+                recipients
                     .iter()
-                    .filter(|m| job.plan.services.contains(&m.id))
-                    .map(|m| bnb::addr(&m.recipient))
+                    .map(|recipient| bnb::addr(recipient))
                     .collect::<Result<Vec<_>>>()?,
             ),
         ]);
@@ -647,7 +686,15 @@ impl AppState {
     }
     pub async fn prepare_job(&self, owner: &str, id: &str, action: &str) -> Result<JobIntent> {
         self.bnb.require_deployment().await?;
-        let (job, actor, existing) = {
+        if action == "delegate" {
+            let job = self.get_job(owner, id)?;
+            let parent_id = job
+                .parent_id
+                .as_deref()
+                .ok_or_else(|| ApiError::validation("Only branches can be delegated."))?;
+            self.refresh_job(owner, parent_id, None).await?;
+        }
+        let (job, actor, existing, delegation_parent) = {
             let mut connection = self.store.connect()?;
             let db =
                 connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
@@ -735,13 +782,44 @@ impl AppState {
             {
                 return Err(ApiError::conflict("Only an unfunded root can be funded."));
             }
-            if action == "delegate"
-                && (job.parent_id.is_none()
-                    || Store::job(&db, job.parent_id.as_deref().expect("branch"))?.funding
-                        != "funded")
-            {
-                return Err(ApiError::conflict("Fund the parent first."));
-            }
+            let delegation_parent = if action == "delegate" {
+                let parent = Store::job(&db, job.parent_id.as_deref().expect("branch"))?;
+                if parent.funding != "funded" {
+                    return Err(ApiError::conflict("Fund the parent first."));
+                }
+                if job.funding != "unfunded" || job.state != "draft" {
+                    return Err(ApiError::conflict(
+                        "Only an unfunded branch draft can be delegated.",
+                    ));
+                }
+                if parent.state != "open"
+                    || parent.plan.deadline <= Utc::now()
+                    || job.plan.deadline <= Utc::now()
+                {
+                    return Err(ApiError::conflict(
+                        "Delegate before the open parent's and branch's deadlines.",
+                    ));
+                }
+                if job.requester_id != parent.plan.executor_id
+                    || job.root_id != parent.root_id
+                    || job.depth != parent.depth + 1
+                    || serde_json::to_value(&job.root_services)?
+                        != serde_json::to_value(&parent.root_services)?
+                {
+                    return Err(ApiError::unavailable(
+                        "Saved delegation terms differ from the parent job.",
+                    ));
+                }
+                inherited_limits(&job.plan, &parent)?;
+                if pending(&db, &parent.id)? {
+                    return Err(ApiError::conflict(
+                        "Confirm the parent's pending wallet action first.",
+                    ));
+                }
+                Some(parent)
+            } else {
+                None
+            };
             if !["fund", "delegate"].contains(&action) && job.funding != "funded" {
                 return Err(ApiError::conflict("Fund the job first."));
             }
@@ -753,9 +831,14 @@ impl AppState {
                 ));
             }
             db.commit()?;
-            (job, actor, existing)
+            (job, actor, existing, delegation_parent)
         };
         let wallet = actor.wallet.as_deref().expect("ready actor");
+        if action == "delegate" && job.buyer_wallet != wallet {
+            return Err(ApiError::conflict(
+                "Delegate with the parent's assigned executor wallet.",
+            ));
+        }
         let agent_address = actor.registry_id.as_deref().expect("registered actor");
         if actor.registry_address != self.config.program
             || self.bnb.agent_address(wallet, &actor.id)? != agent_address
@@ -827,6 +910,15 @@ impl AppState {
                 "Job terms or state changed while preparing the wallet action.",
             ));
         }
+        if let Some(parent) = delegation_parent {
+            if pending(&tx, &parent.id)?
+                || encode(&Store::job(&tx, &parent.id)?)? != encode(&parent)?
+            {
+                return Err(ApiError::conflict(
+                    "The parent job changed while preparing delegation. Refresh before signing.",
+                ));
+            }
+        }
         tx.execute(
             "INSERT INTO job_intents(id,job_id,owner,payload,instruction) VALUES(?,?,?,?,?)",
             params![intent.id, id, owner, encode(&intent)?, encode(&ix)?],
@@ -895,6 +987,11 @@ impl AppState {
         for mut node in tree.clone() {
             let state = self.bnb.job(&node.id).await?;
             if state["buyer"] == bnb::ZERO {
+                if node.funding == "funded" {
+                    return Err(ApiError::unavailable(
+                        "The funded job is missing from BNB escrow state.",
+                    ));
+                }
                 continue;
             }
             if state["termsHash"] != node.terms_hash
@@ -905,6 +1002,7 @@ impl AppState {
                 || bnb::number(&state["deadline"])? != node.plan.deadline.timestamp() as u128
                 || state["root"] != bnb::id(&node.root_id)?
                 || bnb::number(&state["tools"])? != u128::from(tool_bitmap(&node.plan.tools))
+                || bnb::number(&state["depth"])? != u128::from(node.depth)
                 || bnb::number(&state["feeBps"])?
                     != self.bnb.manifest()?["fee_bps"].as_u64().unwrap_or(200) as u128
             {
@@ -993,6 +1091,7 @@ impl AppState {
             "SELECT payload FROM jobs WHERE root_id=?",
             [&job.root_id],
         )?;
+        let funded_ids: HashSet<_> = updates.iter().map(|node| node.id.clone()).collect();
         for mut node in updates {
             let reserved = fresh_tree
                 .iter()
@@ -1000,6 +1099,7 @@ impl AppState {
                     j.parent_id.as_deref() == Some(&node.id)
                         && j.state == "draft"
                         && j.funding == "unfunded"
+                        && !funded_ids.contains(&j.id)
                         && !node.id.eq(&j.id)
                 })
                 .map(|j| j.plan.budget)

@@ -15,6 +15,7 @@ import {FinanceRouter} from "./TabBuyback.t.sol";
 /// The default protocol is the immutable deployment recorded in contracts/deployments/bnb-56.json.
 contract TabFinanceForkTest is Test {
     address constant USDT = 0x55d398326f99059fF775485246999027B3197955;
+    address constant WBNB = 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c;
     address constant DEPLOYED_PROTOCOL = address(bytes20(hex"be2c140c0b40d25ef5531d93c0696318319e6375"));
     address constant BORROWER = address(0xB0B);
     address constant LENDER = address(0x1E);
@@ -55,8 +56,9 @@ contract TabFinanceForkTest is Test {
 
     function testDeployedProtocolWorkingCapitalInteropOnBnbFork() public {
         FinanceFeed bnbFeed = new FinanceFeed(8, 1000e8);
-        FinanceFeed usdtFeed = new FinanceFeed(8, 1e8);
-        TabPriceOracle oracle = new TabPriceOracle(0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c, USDT, address(bnbFeed), address(usdtFeed), 1 hours, 1 hours);
+        FinanceFeed stableFeed = new FinanceFeed(8, 1e8);
+        TabPriceOracle oracle =
+            new TabPriceOracle(WBNB, USDT, address(bnbFeed), address(stableFeed), 1 hours, 1 hours);
         TabLendingPool pool = new TabLendingPool(address(protocol), address(oracle));
         vm.deal(BORROWER, 1 ether);
         vm.startPrank(LENDER);
@@ -92,16 +94,17 @@ contract TabFinanceForkTest is Test {
         );
         vm.startPrank(BORROWER);
         pool.acceptLoan(LOAN);
-        pool.pledgeCollateral{value: 0.01 ether}(LOAN);
+        pool.pledgeCollateral{value: 0.1 ether}(LOAN);
         pool.spendLoan(LOAN, MERCHANT, 1 ether, 1, H, H);
         usdt.approve(address(pool), 1 ether);
         pool.repayLoan(LOAN, 1 ether);
         pool.closeLoan(LOAN);
-        pool.withdrawCollateral(LOAN, 0.01 ether);
+        pool.withdrawCollateral(LOAN, 0.1 ether);
         vm.stopPrank();
         vm.prank(LENDER);
         pool.redeem(100 ether, LENDER, LENDER);
         assertEq(pool.outstanding(), 0);
+        assertEq(pool.totalCollateral(), 0);
         assertEq(usdt.balanceOf(address(pool)), 0);
         assertEq(usdt.balanceOf(LENDER), 10_000 ether);
     }

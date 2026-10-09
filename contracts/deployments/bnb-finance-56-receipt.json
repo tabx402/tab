@@ -1,0 +1,72 @@
+{
+  "id": "tab-bnb56-optional-secured-finance-v1",
+  "status": "deployed_verified",
+  "chain_id": 56,
+  "authority": "0x00e128e7779ea927a087b40ade268dedc1b34a90",
+  "protocol": "0xbe2c140c0b40d25ef5531d93c0696318319e6375",
+  "official_tab_address": "0xf07449517ae4b48808098c573a5347e67c714444",
+  "plan_hash": "0xab2f43e1fb4961831a9b71ad44335647f3fa8e7a84c7eea066348dc175e806bb",
+  "source_hash": "0xea238808240a0e72c512e3a8bc86900d5f633c1dace7c00f811acdfab5119aee",
+  "transactions": [
+    {
+      "key": "oracle",
+      "address": "0x6a29f5673489225fe899497e690909a4de133c3f",
+      "transaction_hash": "0xcad0bb8b078d155a4015cdb6a2aa5d5c9eca911d0672578508f0475845d9f2aa",
+      "block_number": "126575361",
+      "block_hash": "0x1e79f8b047df74b55eb8d39a960c5dd55facb0bdaf412a81bbd0442fc7323767",
+      "gas_cost_wei": "21801950000000"
+    },
+    {
+      "key": "lending",
+      "address": "0xf50afe8778367dd9b462c051f9d3a015b1df9048",
+      "transaction_hash": "0xe05225a2a08b5296bee6e5d6a3e655284470aa65e3c4b211678892c3888e63da",
+      "block_number": "126575376",
+      "block_hash": "0xc23cf60a049268dbfaff0c3df360b8d460f1b02bbae73ee9f90f3dfba7d9f5ee",
+      "gas_cost_wei": "220800550000000"
+    },
+    {
+      "key": "stock_loans",
+      "address": "0x09cef4a4f42b125299167a7aa622ce21d22db5ce",
+      "transaction_hash": "0x394a354a9b1a202cbf4db955814c7c58ea58f803fbe7941137ffa4b8d8a78713",
+      "block_number": "126575392",
+      "block_hash": "0x05bb3c9b6565eea1063e93a0f7ecdaaf66089fd9e9bcad438e3dea1641bff77e",
+      "gas_cost_wei": "179803400000000"
+    },
+    {
+      "key": "direct_backing",
+      "address": null,
+      "transaction_hash": "0x2e3023d9de3b94eedd24ddebfaae5b8d8c95b8cffa29781f8995a7dcd0729a4c",
+      "block_number": "126575407",
+      "block_hash": "0x88ce0976d32a11675265e2206a98816ad6f943a92c6e112dae90037a2c1ae6f5",
+      "gas_cost_wei": "6400800000000"
+    }
+  ],
+  "modules": {
+    "oracle": {
+      "address": "0x6a29f5673489225fe899497e690909a4de133c3f",
+      "code_hash": "0xfb7089fb9d92eedc1e73861a9ff7cef6a1bae7523e69ef0cca9be99ee80ba4e8"
+    },
+    "lending": {
+      "address": "0xf50afe8778367dd9b462c051f9d3a015b1df9048",
+      "code_hash": "0x41e0583fc65e2778e185ad8012ccdf88b3247c730974f8d5a0a439ec9db8a1fc"
+    },
+    "stock_loans": {
+      "address": "0x09cef4a4f42b125299167a7aa622ce21d22db5ce",
+      "code_hash": "0xd1451ddee01129198d75f12eadfb495941181e7d7bc405e220d0c19952d9f2a7"
+    }
+  },
+  "observed_block": "126575408",
+  "observed_block_hash": "0x74d8b42d8a16a9aedb4ea1ee93088c16bc91db11e0b54233580c1846bc5b7df8",
+  "gas_cost_bnb": "0.0004288067",
+  "funding_usdt_by_this_release": "0",
+  "stock_whitelist_changes": 0,
+  "direct_collateral_configuration": {
+    "asset": "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c",
+    "oracle": "0x6a29f5673489225fe899497e690909a4de133c3f",
+    "ltv_bps": 5000,
+    "liquidation_bps": 7500,
+    "liquidation_bonus_bps": 500,
+    "debt_cap_units": "10000000000000000000000"
+  },
+  "verified_at": "2026-10-09T04:55:08.964Z"
+}

@@ -24,6 +24,7 @@ This repository contains the web application, Rust API, Solidity contracts, depl
 - [backend and wallet flow](#backend-and-wallet-flow)
 - [jobs and delegation](#jobs-and-delegation)
 - [funded-job guide](docs/funded-jobs.md)
+- [delegation guide](docs/delegation.md)
 - [update series](docs/UPDATES.md)
 - [contracts](#contracts)
 - [optional finance modules](#optional-finance-modules)
@@ -82,6 +83,8 @@ The table below describes the production API and repository configuration checke
 | Secured pooled advances | Native-BNB-backed pool deployed and verified with 50% borrowing limit, 75% liquidation threshold and 5% bonus. Lender deposits and borrower collateral are separate wallet actions. | [finance system](https://tabagents.io/api/finance/system), [finance receipt](contracts/deployments/bnb-finance-56-receipt.json) |
 | Stock-loan module | Deployed with an empty collateral whitelist. Stock borrowing awaits issuer-adjusted token price feeds and market policy. | [finance system](https://tabagents.io/api/finance/system), [configuration](backend/config/finance-bnb.json) |
 | Buybacks | Deployment awaits a verified working swap route for official TAB. No buyback funding or execution is implied. | [finance system](https://tabagents.io/api/finance/system) |
+
+At this check, both finance pools report zero liquidity and outstanding loans. The stock collateral whitelist is empty, and the buyback module remains undeployed.
 
 The API verifies contract code and configuration before preparing financial actions. Availability can change with deployment checks, provider budgets, sponsor funds and merchant configuration.
 
@@ -161,7 +164,7 @@ USDT quantities retain all 18 decimals. The frontend and API pass decimal string
 
 `TAB_HOLDER_ACCESS_ENABLED=true` restricts new app actions and scheduled runs to verified wallets holding a positive balance of the official TAB token. Activate it only after `TAB_OFFICIAL_TOKEN`, the manifest's `official_tab_address` and `official_tab_code_hash`, and the protocol's configured token agree. EIP-1167 tokens also require their embedded implementation address and runtime hash to be pinned. Release packaging derives `TAB_OFFICIAL_TOKEN` and `TAB_HOLDER_ACCESS_ENABLED` from the manifest, including its explicit `holder_access_enabled` policy, so later releases preserve the verified activation. Missing or unavailable verification denies new actions. Public browsing, sign-in, receipt reconciliation, repayment, withdrawal and other recovery actions remain available.
 
-`GET /api/account/holder-access` reports enforcement separately from eligibility. The authenticated `/challenge` and `/verify` endpoints beneath that path bind a wallet to the account through a short-lived signature; connecting a wallet in the browser alone grants no access. Each new action checks current holdings. This app policy cannot retrofit restrictions into already deployed immutable contracts. The undeployed finance contracts also check holdings onchain before deposits, borrowing and buyback funding or execution, while preserving repayment and redemption.
+`GET /api/account/holder-access` reports enforcement separately from eligibility. The authenticated `/challenge` and `/verify` endpoints beneath that path bind a wallet to the account through a short-lived signature; connecting a wallet in the browser alone grants no access. Each new action checks current holdings. This app policy cannot retrofit restrictions into already deployed immutable contracts. The deployed finance pools also check holdings onchain before new deposits and borrowing, while preserving repayment and redemption. The buyback module's source includes holder checks, but that module is not deployed.
 
 ## local development
 
@@ -266,7 +269,7 @@ A job starts with a concrete description, an executor, a USDT budget, permitted 
 
 A complete run attaches bounded evidence with the run ID and full-result hash after a second escrow and policy check. Partial runs retain their actual outputs and missing authorization or provider status without attaching completed evidence. Job outputs remain separate from public agent run history. Running tools does not submit, accept or pay the job; those steps retain their wallet review and signatures.
 
-An executor can delegate part of the task into a child branch. Each branch reserves existing parent budget, inherits a subset of its permissions and fits within the parent's deadline. The contract limits delegation to eight levels. A parent cannot settle while descendants remain open, and the root buyer retains approval of reward releases throughout the tree.
+An executor can delegate part of the task into a child branch. A saved branch reserves local planning capacity; its parent executor signs a separate allocation from existing funded escrow. Each branch uses the same or narrower tools, approved recipient addresses, per-call cap and deadline. The API checks both agents' configured limits and refreshes funded parent state before drafting or preparing allocation. Confirmed allocations consume budget once, even when reconciliation discovers a locally unfunded draft already allocated onchain. The contract limits delegation to eight levels. A parent cannot settle while descendants remain open, and the root buyer retains approval of reward releases throughout the tree.
 
 The root buyer can accept or reject a submitted job through **its original deadline plus 24 hours**. Acceptance can happen immediately after submission and requires the exact evidence hash, an unpaused root and no unclosed children. Rejection clears the submission and reopens the job without extending its original deadline. Rejecting after that deadline leaves no opportunity to submit a revision. The first timely submission stays recorded for objective commitment accounting.
 
@@ -274,7 +277,7 @@ An accepted branch still needs a signed closure before its parent can settle. Th
 
 Provider expenses and executor rewards are different movements of money. Direct escrow service payments are disabled in the current production configuration. Configured inference and research consume separately accounted operator provider credits; wallet-funded x402 purchases retain their own authorization flow. Where enabled, escrow provider payouts require an allowed recipient and tool plus request and receipt commitments. Submitted evidence remains inspectable before acceptance.
 
-See [the funded-job guide](docs/funded-jobs.md) for the buyer/executor steps, review timing, costs, signatures and API routes. Follow the [update series](docs/UPDATES.md) for the ordered product and documentation updates.
+See [the funded-job guide](docs/funded-jobs.md) for review, costs and settlement, and [the delegation guide](docs/delegation.md) for inherited limits, planned reservations and wallet authority. Follow the [update series](docs/UPDATES.md) for the ordered product and documentation updates.
 
 The core protocol reserves a **0.5% fee on accepted work rewards**. An executor holding the configured official TAB token can receive a zero fee at settlement. The configured token is `0xf07449517ae4b48808098c573a5347e67c714444`. The executor must retain a positive balance in their wallet at settlement; staked TAB does not count toward this exemption. Collected fees remain a protocol reserve, with no automatic buyback path.
 

@@ -46,6 +46,8 @@ Rejecting after the original deadline leaves no time to submit a revision under 
 
 A branch reserves existing parent funds. It does not mint another budget or pull another root deposit. The parent executor signs its onchain allocation. Its tools, recipients, per-call cap and deadline stay within the parent agreement.
 
+See [delegation with inherited limits](delegation.md) for planned reservations, exact recipient snapshots and the account, agent-key and wallet roles.
+
 An accepted branch is paid but still needs a signed `close_branch` action. An unfinished branch returns its remaining allocation through cancellation. Work through the tree from the deepest branch upward. A parent cannot settle until every direct child has been closed or cancelled.
 
 ## costs and payment authority
